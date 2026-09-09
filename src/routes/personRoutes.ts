@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import * as personController from '../controllers/personController.js';
+import * as repaymentController from '../controllers/repaymentController.js';
 import * as transactionController from '../controllers/transactionController.js';
 import { authenticate } from '../middlewares/authenticate.js';
 import { requireRole } from '../middlewares/requireRole.js';
 import { validate } from '../middlewares/validate.js';
 import { personIdParamsSchema, upsertPersonSchema } from '../validators/personValidators.js';
+import { createRepaymentSchema } from '../validators/repaymentValidators.js';
 
 export const personRouter = Router();
 
@@ -32,4 +34,10 @@ personRouter.get(
   '/:personId/ledger',
   validate(personIdParamsSchema, 'params'),
   transactionController.getPersonLedgerHandler,
+);
+personRouter.post(
+  '/:personId/repayments',
+  validate(personIdParamsSchema, 'params'),
+  validate(createRepaymentSchema),
+  repaymentController.createPersonRepaymentHandler,
 );

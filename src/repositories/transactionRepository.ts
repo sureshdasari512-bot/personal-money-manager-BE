@@ -1,5 +1,10 @@
 import { db } from '../config/database.js';
-import type { SqlQuery, Transaction, TransactionStatus, UpsertTransactionInput } from '../types/index.js';
+import type {
+  SqlQuery,
+  Transaction,
+  TransactionStatus,
+  UpsertTransactionInput,
+} from '../types/index.js';
 import { toIsoDate } from '../utils/isoDate.js';
 
 interface TransactionRow {
@@ -116,25 +121,52 @@ export async function findTransactionByIdForUpdate(
 }
 
 /**
+ * Locks every active lend for a person, oldest first, for a FIFO payment.
+ *
+ * @param query - Query bound to the open transaction
+ * @param userId - Owner id
+ * @param personId - Person whose lends to lock
+ * @returns Lend transactions ordered oldest first
+ */
+export async function findLendTransactionsByPersonForUpdate(
+  query: SqlQuery,
+  userId: string,
+  personId: string,
+): Promise<Transaction[]> {
+  const result = await query<TransactionRow>(
+    `SELECT ${TRANSACTION_COLUMNS} FROM transactions
+     WHERE user_id = $1 AND person_id = $2 AND type = 'lend' AND deleted_at IS NULL
+     ORDER BY transaction_date ASC, created_at ASC
+     FOR UPDATE`,
+    [userId, personId],
+  );
+  return result.rows.map(mapTransaction);
+}
+
+/**
  * Computes outstanding cents per transaction via SQL aggregation (amount - sum of active repayments).
  *
  * @param userId - Owner id
  * @param transactionIds - Transaction ids to include
+ * @param query - Optional query bound to an open DB transaction
  * @returns Map of transaction id → outstanding cents
  */
 export async function findOutstandingCentsByIds(
   userId: string,
   transactionIds: string[],
+  query: SqlQuery = db.query,
 ): Promise<Record<string, number>> {
   if (transactionIds.length === 0) {
     return {};
   }
 
-  const result = await db.query<{ id: string; outstanding_cents: string | number }>(
+  const result = await query<{ id: string; outstanding_cents: string | number }>(
     `SELECT
        t.id,
-       t.amount_cents - COALESCE(SUM(r.amount_cents) FILTER (WHERE r.deleted_at IS NULL), 0)
-         AS outstanding_cents
+       GREATEST(
+         t.amount_cents - COALESCE(SUM(r.amount_cents) FILTER (WHERE r.deleted_at IS NULL), 0),
+         0
+       ) AS outstanding_cents
      FROM transactions t
      LEFT JOIN repayments r ON r.transaction_id = t.id
      WHERE t.user_id = $1 AND t.id = ANY($2::uuid[]) AND t.deleted_at IS NULL
@@ -142,9 +174,7 @@ export async function findOutstandingCentsByIds(
     [userId, transactionIds],
   );
 
-  return Object.fromEntries(
-    result.rows.map((row) => [row.id, Number(row.outstanding_cents)]),
-  );
+  return Object.fromEntries(result.rows.map((row) => [row.id, Number(row.outstanding_cents)]));
 }
 
 /**

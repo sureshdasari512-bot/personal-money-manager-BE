@@ -126,6 +126,7 @@ export interface Repayment {
   amountCents: number;
   paidOn: string;
   notes: string | null;
+  allocationId: string | null;
   deletedAt: Date | null;
   deletedBy: string | null;
   createdAt: Date;
@@ -138,6 +139,35 @@ export interface CreateRepaymentInput {
   amountCents: number;
   paidOn: string;
   notes?: string;
+  allocationId?: string;
+}
+
+export interface RepaymentAllocation {
+  id: string;
+  userId: string;
+  personId: string;
+  totalAmountCents: number;
+  paidOn: string;
+  notes: string | null;
+  unallocatedCents: number;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  createdBy: string | null;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface CreateAllocationInput {
+  personId: string;
+  totalAmountCents: number;
+  paidOn: string;
+  notes?: string;
+}
+
+export interface PersonRepaymentResult {
+  allocation: RepaymentAllocation;
+  repayments: Repayment[];
 }
 
 export interface LedgerTransaction extends Transaction {

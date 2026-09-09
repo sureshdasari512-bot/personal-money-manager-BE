@@ -46,6 +46,29 @@ export async function createRepaymentHandler(
 }
 
 /**
+ * POST /people/:personId/repayments
+ * Records a person-level payment and splits it FIFO across outstanding lends.
+ */
+export async function createPersonRepaymentHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { userId } = requireUser(req);
+    const { personId } = req.params as { personId: string };
+    const result = await repaymentService.addPersonRepayment(
+      userId,
+      personId,
+      req.body as CreateRepaymentInput,
+    );
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
  * DELETE /transactions/:transactionId/repayments/:repaymentId
  * Soft-deletes a repayment.
  */

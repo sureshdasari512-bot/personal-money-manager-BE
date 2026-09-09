@@ -8,6 +8,7 @@ interface RepaymentRow {
   amount_cents: string | number;
   paid_on: Date | string;
   notes: string | null;
+  allocation_id: string | null;
   deleted_at: Date | null;
   deleted_by: string | null;
   created_at: Date;
@@ -17,7 +18,7 @@ interface RepaymentRow {
 }
 
 const REPAYMENT_COLUMNS = `
-  id, transaction_id, amount_cents, paid_on, notes,
+  id, transaction_id, amount_cents, paid_on, notes, allocation_id,
   deleted_at, deleted_by, created_at, created_by, updated_at, updated_by
 `;
 
@@ -34,6 +35,7 @@ function mapRepayment(row: RepaymentRow): Repayment {
     amountCents: Number(row.amount_cents),
     paidOn: toIsoDate(row.paid_on),
     notes: row.notes,
+    allocationId: row.allocation_id,
     deletedAt: row.deleted_at,
     deletedBy: row.deleted_by,
     createdAt: row.created_at,
@@ -105,7 +107,7 @@ export async function countActiveByTransaction(transactionId: string): Promise<n
  *
  * @param userId - Acting user (audit columns)
  * @param transactionId - Parent transaction
- * @param input - Amount, date, optional notes
+ * @param input - Amount, date, optional notes and allocation id
  * @param query - Query bound to the open DB transaction
  * @returns The created repayment
  */
@@ -117,10 +119,17 @@ export async function createRepayment(
 ): Promise<Repayment> {
   const result = await query<RepaymentRow>(
     `INSERT INTO repayments
-       (transaction_id, amount_cents, paid_on, notes, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $5)
+       (transaction_id, amount_cents, paid_on, notes, allocation_id, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $6)
      RETURNING ${REPAYMENT_COLUMNS}`,
-    [transactionId, input.amountCents, input.paidOn, input.notes ?? null, userId],
+    [
+      transactionId,
+      input.amountCents,
+      input.paidOn,
+      input.notes ?? null,
+      input.allocationId ?? null,
+      userId,
+    ],
   );
   return mapRepayment(result.rows[0]);
 }

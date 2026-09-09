@@ -2,11 +2,25 @@ import * as dashboardRepository from '../repositories/dashboardRepository.js';
 import type { DashboardSummary } from '../types/index.js';
 
 /**
- * Builds the Phase 3 dashboard summary for the authenticated user.
+ * Builds the Phase 3 dashboard for the authenticated user (no email reminders).
  *
  * @param userId - Authenticated user
- * @returns Aggregated dashboard totals
+ * @returns Totals, people with balances, overdue and due-soon items
  */
 export async function getDashboard(userId: string): Promise<DashboardSummary> {
-  return dashboardRepository.getDashboardSummary(userId);
+  const [totals, people, overdue, upcomingDue] = await Promise.all([
+    dashboardRepository.getDashboardTotals(userId),
+    dashboardRepository.findPeopleWithBalance(userId),
+    dashboardRepository.findOverdueItems(userId),
+    dashboardRepository.findUpcomingDueItems(userId),
+  ]);
+
+  return {
+    ...totals,
+    overdueCount: overdue.length,
+    upcomingDueCount: upcomingDue.length,
+    people,
+    overdue,
+    upcomingDue,
+  };
 }

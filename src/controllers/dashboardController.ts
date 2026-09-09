@@ -4,7 +4,7 @@ import * as dashboardService from '../services/dashboardService.js';
 
 /**
  * GET /dashboard
- * Returns net-position totals for the authenticated user.
+ * Returns net-position totals, people with balances, and due lists.
  */
 export async function getDashboardHandler(
   req: Request,

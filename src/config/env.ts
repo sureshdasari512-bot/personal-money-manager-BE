@@ -26,8 +26,13 @@ export const env = {
   jwtRefreshSecret: requireEnv('JWT_REFRESH_SECRET'),
   cookieSecure: process.env.COOKIE_SECURE === 'true',
   bcryptCost: Number(process.env.BCRYPT_COST ?? 10),
-  resendApiKey: process.env.RESEND_API_KEY ?? '',
-  emailFrom: process.env.EMAIL_FROM ?? 'Personal Money Manager <beth.t@example.com>',
+  smtpHost: process.env.SMTP_HOST ?? 'smtp.gmail.com',
+  smtpPort: Number(process.env.SMTP_PORT ?? 465),
+  smtpSecure: process.env.SMTP_SECURE !== 'false',
+  smtpUser: process.env.SMTP_USER ?? '',
+  smtpPass: process.env.SMTP_PASS ?? '',
+  emailFrom: process.env.EMAIL_FROM ?? '',
+  redisUrl: requireEnv('REDIS_URL'),
 } as const;
 
 export const ACCESS_TOKEN_MAX_AGE_MS = 15 * 60 * 1000;

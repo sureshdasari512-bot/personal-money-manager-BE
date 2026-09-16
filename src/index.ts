@@ -1,12 +1,19 @@
 import { createApp } from './app.js';
 import { closeDatabase, connectDatabase } from './config/database.js';
 import { env } from './config/env.js';
+import { closeRedisConnections, connectRedis } from './config/redis.js';
+import { closeEmailQueue } from './queues/emailQueue.js';
+import { verifySmtpConnection } from './services/smtpEmailChannel.js';
 import { logger } from './utils/logger.js';
+import { closeEmailWorker, startEmailWorker } from './workers/emailWorker.js';
 
 /**
- * Starts the HTTP server after confirming the database connection.
+ * Starts Redis, the email worker, the database, then the HTTP server.
  */
 async function start(): Promise<void> {
+  await verifySmtpConnection();
+  await connectRedis();
+  startEmailWorker();
   await connectDatabase();
 
   const app = createApp();
@@ -23,13 +30,16 @@ async function start(): Promise<void> {
   });
 
   /**
-   * Stops HTTP + database connections on process signals.
+   * Stops HTTP, workers, Redis, and database connections on process signals.
    *
    * @param signal - OS shutdown signal
    */
   async function shutdown(signal: string): Promise<void> {
     logger.info({ signal }, 'Shutting down');
     server.close(async () => {
+      await closeEmailWorker();
+      await closeEmailQueue();
+      await closeRedisConnections();
       await closeDatabase();
       process.exit(0);
     });

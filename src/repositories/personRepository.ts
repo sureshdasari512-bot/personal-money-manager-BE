@@ -45,7 +45,7 @@ function mapPerson(row: PersonRow): Person {
 }
 
 /**
- * Lists active contacts belonging to the authenticated user.
+ * Lists active contacts belonging to the authenticated user, newest first.
  *
  * @param userId - Owner id
  * @returns The user's non-deleted contacts
@@ -54,7 +54,7 @@ export async function findPeopleByUser(userId: string): Promise<Person[]> {
   const result = await db.query<PersonRow>(
     `SELECT ${PERSON_COLUMNS} FROM people
      WHERE user_id = $1 AND deleted_at IS NULL
-     ORDER BY name ASC`,
+     ORDER BY created_at DESC`,
     [userId],
   );
   return result.rows.map(mapPerson);

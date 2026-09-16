@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { env, MAX_INVITE_EXPIRY_HOURS } from '../config/env.js';
+import { enqueueEmail } from '../queues/emailQueue.js';
 import * as invitationRepository from '../repositories/invitationRepository.js';
 import * as userRepository from '../repositories/userRepository.js';
 import {
@@ -9,11 +10,12 @@ import {
   type PublicInvitation,
   type PublicUser,
 } from '../types/index.js';
+import { buildAccountReadyEmail } from '../utils/accountReadyEmail.js';
 import { buildInvitationEmail } from '../utils/invitationEmail.js';
 import { getInvitationStatus } from '../utils/invitationStatus.js';
+import { logger } from '../utils/logger.js';
 import { toPublicUser } from '../utils/userMapper.js';
 import { hashPassword } from './authService.js';
-import { getEmailChannel } from './resendEmailChannel.js';
 
 /**
  * Adds the derived status used by admin screens.
@@ -59,7 +61,7 @@ export async function getInvitation(invitationId: string): Promise<PublicInvitat
  * @param input - Invitee email and role
  * @param invitedBy - Admin user id
  * @returns The created invitation (token is needed to build the email link)
- * @throws {AppError} If the email is taken, a pending invite exists, or mail fails
+ * @throws {AppError} If the email is taken, a pending invite exists, or the queue is down
  */
 export async function createInvitation(
   input: CreateInvitationInput,
@@ -79,7 +81,6 @@ export async function createInvitation(
     });
   }
 
-  const channel = getEmailChannel();
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + MAX_INVITE_EXPIRY_HOURS * 60 * 60 * 1000);
   const invitation = await invitationRepository.createInvitation(
@@ -94,12 +95,15 @@ export async function createInvitation(
     token,
     frontendOrigin: env.frontendOrigin,
   });
-  await channel.send({
-    to: input.email,
-    subject: content.subject,
-    html: content.html,
-    text: content.text,
-  });
+  await enqueueEmail(
+    {
+      to: input.email,
+      subject: content.subject,
+      html: content.html,
+      text: content.text,
+    },
+    `invite-${invitation.id}`,
+  );
 
   return toPublicInvitation(invitation);
 }
@@ -134,7 +138,7 @@ export async function revokeInvitation(
 }
 
 /**
- * Activates an invited account by setting a password.
+ * Activates an invited account by setting a password, then queues a signed-in email.
  *
  * @param token - Invite token from the email link
  * @param password - Password chosen by the invitee
@@ -161,5 +165,30 @@ export async function acceptInvitation(token: string, password: string): Promise
   );
   await invitationRepository.markInvitationAccepted(invitation.id, user.id);
 
-  return toPublicUser(user);
+  const publicUser = toPublicUser(user);
+  await enqueueAccountReadyEmail(publicUser.id, publicUser.email);
+  return publicUser;
+}
+
+/**
+ * Queues the post-setup signed-in email. Login still succeeds if Redis is down.
+ *
+ * @param userId - New account id (used as the job idempotency key)
+ * @param email - Recipient
+ */
+async function enqueueAccountReadyEmail(userId: string, email: string): Promise<void> {
+  const content = buildAccountReadyEmail({ frontendOrigin: env.frontendOrigin });
+  try {
+    await enqueueEmail(
+      {
+        to: email,
+        subject: content.subject,
+        html: content.html,
+        text: content.text,
+      },
+      `account-ready-${userId}`,
+    );
+  } catch (err) {
+    logger.error({ err, userId }, 'Failed to enqueue account-ready email');
+  }
 }

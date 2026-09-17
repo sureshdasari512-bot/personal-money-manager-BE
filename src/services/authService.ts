@@ -12,6 +12,11 @@ import * as userRepository from '../repositories/userRepository.js';
 import { AppError, type AuthTokenPayload, type PublicUser, type User } from '../types/index.js';
 import { hashToken } from '../utils/tokenHash.js';
 import { toPublicUser } from '../utils/userMapper.js';
+import {
+  assertLoginNotLocked,
+  clearLoginAttempts,
+  recordFailedLogin,
+} from './loginAttemptService.js';
 
 /**
  * Builds cookie options for cross-origin FE/BE deployments.
@@ -86,22 +91,27 @@ export async function startSession(
  * @param email - Login email
  * @param password - Plain-text password
  * @returns Public user record
- * @throws {AppError} If credentials are invalid or the account is disabled
+ * @throws {AppError} If credentials are invalid (401), locked (429), or disabled (403)
  */
 export async function login(email: string, password: string): Promise<PublicUser> {
+  await assertLoginNotLocked(email);
+
   const user = await userRepository.findUserByEmail(email);
   if (!user) {
-    throw new AppError('Invalid email or password', 401);
+    throw await recordFailedLogin(email);
   }
   if (!user.isActive) {
-    throw new AppError('Account is disabled', 403);
+    throw new AppError('This account is disabled. Contact your administrator.', 403, {
+      email: 'This account is disabled',
+    });
   }
 
   const matches = await bcrypt.compare(password, user.passwordHash);
   if (!matches) {
-    throw new AppError('Invalid email or password', 401);
+    throw await recordFailedLogin(email);
   }
 
+  await clearLoginAttempts(email);
   return toPublicUser(user);
 }
 

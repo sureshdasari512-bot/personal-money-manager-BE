@@ -61,4 +61,19 @@ export async function connectRedis(): Promise<void> {
 export async function closeRedisConnections(): Promise<void> {
   await Promise.all(connections.map((redis) => redis.quit()));
   connections.length = 0;
+  commandClient = undefined;
+}
+
+let commandClient: Redis | undefined;
+
+/**
+ * Returns a shared Redis client for app commands (login attempts, etc.).
+ *
+ * @returns ioredis client
+ */
+export function getRedisCommands(): Redis {
+  if (!commandClient) {
+    commandClient = createRedisConnection();
+  }
+  return commandClient;
 }

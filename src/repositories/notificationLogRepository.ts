@@ -17,9 +17,9 @@ export async function claimNotificationSend(
   dueDateIso: string,
 ): Promise<boolean> {
   const result = await db.query<{ id: string }>(
-    `INSERT INTO notification_log (user_id, transaction_id, window, due_date, status)
+    `INSERT INTO notification_log (user_id, transaction_id, reminder_window, due_date, status)
      VALUES ($1, $2, $3, $4::date, 'pending')
-     ON CONFLICT (user_id, transaction_id, window, due_date)
+     ON CONFLICT (user_id, transaction_id, reminder_window, due_date)
      DO UPDATE SET
        status = 'pending',
        last_error = NULL
@@ -53,7 +53,7 @@ export async function markNotificationsSent(
          sent_at = NOW(),
          last_error = NULL
      WHERE user_id = $1
-       AND window = $2
+       AND reminder_window = $2
        AND due_date = $3::date
        AND transaction_id = ANY($4::uuid[])
        AND status = 'pending'`,
@@ -85,7 +85,7 @@ export async function markNotificationsFailed(
      SET status = 'failed',
          last_error = $5
      WHERE user_id = $1
-       AND window = $2
+       AND reminder_window = $2
        AND due_date = $3::date
        AND transaction_id = ANY($4::uuid[])
        AND status = 'pending'`,

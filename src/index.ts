@@ -2,13 +2,14 @@ import { createApp } from './app.js';
 import { closeDatabase, connectDatabase } from './config/database.js';
 import { env } from './config/env.js';
 import { closeRedisConnections, connectRedis } from './config/redis.js';
+import { closeDueReminderJobs, scheduleDueReminderScan, startDueReminderWorker } from './queues/dueReminderQueue.js';
 import { closeEmailQueue } from './queues/emailQueue.js';
 import { verifySmtpConnection } from './services/smtpEmailChannel.js';
 import { logger } from './utils/logger.js';
 import { closeEmailWorker, startEmailWorker } from './workers/emailWorker.js';
 
 /**
- * Binds HTTP first (Render health), then database, Redis, and SMTP.
+ * Binds HTTP first (Render health), then database, Redis, workers, and SMTP.
  */
 async function start(): Promise<void> {
   const app = createApp();
@@ -29,8 +30,10 @@ async function start(): Promise<void> {
   try {
     await connectRedis();
     startEmailWorker();
+    startDueReminderWorker();
+    await scheduleDueReminderScan();
   } catch (err) {
-    logger.error({ err }, 'Redis unavailable; email queue disabled');
+    logger.error({ err }, 'Redis unavailable; email queue and due reminders disabled');
   }
 
   void verifySmtpConnection();
@@ -44,6 +47,7 @@ async function start(): Promise<void> {
     logger.info({ signal }, 'Shutting down');
     server.close(async () => {
       await closeEmailWorker();
+      await closeDueReminderJobs();
       await closeEmailQueue();
       await closeRedisConnections();
       await closeDatabase();

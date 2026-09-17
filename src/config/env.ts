@@ -33,6 +33,7 @@ export const env = {
   smtpPass: process.env.SMTP_PASS ?? '',
   emailFrom: process.env.EMAIL_FROM ?? '',
   redisUrl: requireEnv('REDIS_URL'),
+  cronSecret: process.env.CRON_SECRET ?? '',
 } as const;
 
 export const ACCESS_TOKEN_MAX_AGE_MS = 15 * 60 * 1000;

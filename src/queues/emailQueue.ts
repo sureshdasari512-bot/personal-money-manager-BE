@@ -1,9 +1,10 @@
 import { Queue } from 'bullmq';
+import { EMAIL_JOB } from '../config/jobs.js';
 import { createRedisConnection } from '../config/redis.js';
 import { AppError } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 
-export const EMAIL_QUEUE_NAME = 'email';
+export const EMAIL_QUEUE_NAME = EMAIL_JOB.queueName;
 
 export interface EmailJobData {
   to: string;
@@ -44,7 +45,7 @@ function getEmailQueue(): Queue<EmailJobData> {
 export async function enqueueEmail(data: EmailJobData, jobId?: string): Promise<void> {
   try {
     const options = jobId ? { jobId: jobId.replaceAll(':', '-') } : {};
-    await getEmailQueue().add('send', data, options);
+    await getEmailQueue().add(EMAIL_JOB.name, data, options);
     logger.info({ to: data.to, jobId }, 'Email enqueued');
   } catch (err) {
     logger.error({ err, to: data.to, jobId }, 'Failed to enqueue email');

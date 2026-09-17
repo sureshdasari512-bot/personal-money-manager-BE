@@ -6,6 +6,20 @@ export type TransactionStatus = 'pending' | 'partially_paid' | 'paid' | 'cancell
 
 export type NotificationType = 'due_reminder' | 'overdue_summary';
 
+export type DueReminderWindow = 'due_minus_2' | 'due_minus_1' | 'due_today';
+
+export interface DueReminderItem {
+  transactionId: string;
+  userId: string;
+  userEmail: string;
+  personId: string;
+  personName: string;
+  type: TransactionType;
+  amountCents: number;
+  outstandingCents: number;
+  dueDate: string;
+}
+
 export interface User {
   id: string;
   email: string;

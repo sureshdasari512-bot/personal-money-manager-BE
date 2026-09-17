@@ -1,6 +1,6 @@
 /**
  * Delivery contract for outbound email (Strategy pattern — Open/Closed).
- * Gmail SMTP via Nodemailer is the current implementation; the BullMQ worker
+ * SMTP via Nodemailer is the current implementation (Brevo relay); the BullMQ worker
  * is the only caller. Another provider can be added without changing services.
  */
 export interface EmailChannel {

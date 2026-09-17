@@ -7,8 +7,8 @@ import { mapSmtpError } from '../utils/smtpError.js';
 import type { EmailChannel } from './emailChannel.js';
 
 /**
- * Sends mail through SMTP (Gmail via Nodemailer). Invitation and reminder
- * services depend on EmailChannel, not this class (Dependency Inversion).
+ * Sends mail through SMTP (Brevo relay via Nodemailer).
+ * Invitation and reminder services depend on EmailChannel, not this class (DIP).
  */
 export class SmtpEmailChannel implements EmailChannel {
   private readonly transporter: Transporter;
@@ -47,7 +47,8 @@ export class SmtpEmailChannel implements EmailChannel {
 }
 
 /**
- * Builds a Gmail SMTP transporter from env. Password is never logged.
+ * Builds an SMTP transporter from env. Password is never logged.
+ * Port 2525 is STARTTLS (used when 587/465 are blocked, e.g. some PaaS networks).
  *
  * @returns Nodemailer transporter
  */
@@ -56,6 +57,7 @@ function createSmtpTransporter(): Transporter {
     host: env.smtpHost,
     port: env.smtpPort,
     secure: env.smtpSecure,
+    requireTLS: !env.smtpSecure,
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 20_000,
@@ -67,7 +69,7 @@ function createSmtpTransporter(): Transporter {
 }
 
 /**
- * Returns the configured Gmail SMTP email channel.
+ * Returns the configured SMTP email channel.
  *
  * @returns EmailChannel implementation
  * @throws {AppError} If SMTP_USER or SMTP_PASS is missing

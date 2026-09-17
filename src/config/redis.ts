@@ -27,6 +27,7 @@ function describeRedisUrl(connectionString: string): { host: string; port: strin
 export function createRedisConnection(): Redis {
   const redis = new Redis(env.redisUrl, {
     maxRetriesPerRequest: null,
+    connectTimeout: 10_000,
   });
   connections.push(redis);
   redis.on('error', (err) => {
@@ -42,7 +43,7 @@ export function createRedisConnection(): Redis {
  */
 export async function connectRedis(): Promise<void> {
   const target = describeRedisUrl(env.redisUrl);
-  const redis = new Redis(env.redisUrl, { maxRetriesPerRequest: null });
+  const redis = new Redis(env.redisUrl, { maxRetriesPerRequest: null, connectTimeout: 10_000 });
   try {
     await redis.ping();
     logger.info(target, 'Redis connected');

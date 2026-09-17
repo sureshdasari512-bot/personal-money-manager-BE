@@ -8,14 +8,9 @@ import { logger } from './utils/logger.js';
 import { closeEmailWorker, startEmailWorker } from './workers/emailWorker.js';
 
 /**
- * Starts Redis, the email worker, the database, then the HTTP server.
+ * Binds HTTP first (Render health), then database, Redis, and SMTP.
  */
 async function start(): Promise<void> {
-  await verifySmtpConnection();
-  await connectRedis();
-  startEmailWorker();
-  await connectDatabase();
-
   const app = createApp();
   const server = app.listen(env.port, () => {
     logger.info(
@@ -28,6 +23,17 @@ async function start(): Promise<void> {
         : 'API listening (COOKIE_SECURE=false so cookies work on http://localhost)',
     );
   });
+
+  await connectDatabase();
+
+  try {
+    await connectRedis();
+    startEmailWorker();
+  } catch (err) {
+    logger.error({ err }, 'Redis unavailable; email queue disabled');
+  }
+
+  void verifySmtpConnection();
 
   /**
    * Stops HTTP, workers, Redis, and database connections on process signals.

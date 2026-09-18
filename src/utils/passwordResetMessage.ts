@@ -13,6 +13,9 @@ export const DISABLED_ACCOUNT_RESET_MESSAGE =
 export const INVALID_RESET_LINK_MESSAGE =
   'This reset link is invalid or has expired. Request a new one from the sign-in page.';
 
+export const PASSWORD_UPDATED_SIGN_IN_MESSAGE =
+  'Your password was updated. Sign in with your new password.';
+
 /**
  * Builds the client-facing lock message after too many reset requests.
  *

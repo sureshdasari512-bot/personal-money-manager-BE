@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const loginSchema = z.object({
-  email: z.string().min(1, 'Email is required').email('Enter a valid email'),
+  email: z.string().trim().min(1, 'Email is required').email('Enter a valid email'),
   password: z
     .string()
     .min(1, 'Password is required')
@@ -17,11 +17,11 @@ export const acceptInvitationSchema = z.object({
 });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().min(1, 'Email is required').email('Enter a valid email'),
+  email: z.string().trim().min(1, 'Email is required').email('Enter a valid email'),
 });
 
 export const resetPasswordSchema = z.object({
-  token: z.string().min(1, 'Reset token is required'),
+  token: z.string().trim().min(1, 'This reset link is incomplete. Request a new one from the sign-in page.'),
   password: z
     .string()
     .min(1, 'Password is required')

@@ -69,19 +69,22 @@ export async function createPasswordResetToken(
 }
 
 /**
- * Finds a reset token by its stored hash.
+ * Locks a reset token row so two submits cannot consume it twice.
  *
+ * @param query - Query bound to the open transaction
  * @param tokenHash - SHA-256 of the raw token
- * @returns The row or null
+ * @returns The locked row or null
  */
-export async function findPasswordResetTokenByHash(
+export async function findPasswordResetTokenByHashForUpdate(
+  query: SqlQuery,
   tokenHash: string,
 ): Promise<PasswordResetToken | null> {
-  const result = await db.query<PasswordResetTokenRow>(
+  const result = await query<PasswordResetTokenRow>(
     `SELECT ${PASSWORD_RESET_TOKEN_COLUMNS}
      FROM password_reset_tokens
      WHERE token_hash = $1
-     LIMIT 1`,
+     LIMIT 1
+     FOR UPDATE`,
     [tokenHash],
   );
   return result.rows[0] ? mapPasswordResetToken(result.rows[0]) : null;
@@ -117,19 +120,22 @@ export async function revokeUnusedPasswordResetTokensForUser(
  * @param id - Token row id
  * @param updatedBy - Acting user id
  * @param query - Optional transaction-bound query
+ * @returns True when this call consumed the token
  */
 export async function markPasswordResetTokenUsed(
   id: string,
   updatedBy: string,
   query: SqlQuery = db.query,
-): Promise<void> {
-  await query(
+): Promise<boolean> {
+  const result = await query<{ id: string }>(
     `UPDATE password_reset_tokens
      SET used_at = NOW(),
          updated_by = $2
      WHERE id = $1
        AND used_at IS NULL
-       AND revoked_at IS NULL`,
+       AND revoked_at IS NULL
+     RETURNING id`,
     [id, updatedBy],
   );
+  return result.rows.length > 0;
 }

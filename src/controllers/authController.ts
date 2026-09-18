@@ -3,6 +3,8 @@ import { requireUser } from '../middlewares/requireUser.js';
 import * as authService from '../services/authService.js';
 import * as invitationService from '../services/invitationService.js';
 import * as passwordResetService from '../services/passwordResetService.js';
+import { logger } from '../utils/logger.js';
+import { PASSWORD_UPDATED_SIGN_IN_MESSAGE } from '../utils/passwordResetMessage.js';
 
 /**
  * POST /auth/login
@@ -83,7 +85,7 @@ export async function acceptInviteHandler(
 
 /**
  * POST /auth/forgot-password
- * Queues a reset email when the account exists. Always returns the same message.
+ * Sends a reset email for an active account. Unknown or disabled emails return a field error.
  */
 export async function forgotPasswordHandler(
   req: Request,
@@ -111,7 +113,13 @@ export async function resetPasswordHandler(
   try {
     const { token, password } = req.body as { token: string; password: string };
     const user = await passwordResetService.resetPassword(token, password);
-    await authService.startSession(res, { id: user.id, role: user.role }, user.id);
+    try {
+      await authService.startSession(res, { id: user.id, role: user.role }, user.id);
+    } catch (err) {
+      logger.error({ err, userId: user.id }, 'Password updated but session could not start');
+      res.status(200).json({ user, message: PASSWORD_UPDATED_SIGN_IN_MESSAGE });
+      return;
+    }
     res.status(200).json({ user });
   } catch (err) {
     next(err);

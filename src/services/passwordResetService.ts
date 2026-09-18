@@ -89,29 +89,45 @@ export async function requestPasswordReset(email: string): Promise<{ message: st
  * @param token - Raw token from the email link
  * @param password - New password
  * @returns Public user to sign in
- * @throws {AppError} If the link is missing, used, revoked, or expired
+ * @throws {AppError} If the link is missing, used, revoked, expired, or the account is disabled
  */
 export async function resetPassword(token: string, password: string): Promise<PublicUser> {
-  const stored = await passwordResetRepository.findPasswordResetTokenByHash(hashToken(token));
-  if (!stored || stored.usedAt || stored.revokedAt) {
-    throw new AppError(INVALID_RESET_LINK_MESSAGE, 400);
-  }
+  const tokenHash = hashToken(token.trim());
 
-  if (stored.expiresAt.getTime() < Date.now()) {
-    throw new AppError(INVALID_RESET_LINK_MESSAGE, 400);
-  }
+  const user = await db.withTransaction(async (query) => {
+    const stored = await passwordResetRepository.findPasswordResetTokenByHashForUpdate(
+      query,
+      tokenHash,
+    );
+    if (!stored || stored.usedAt || stored.revokedAt) {
+      throw new AppError(INVALID_RESET_LINK_MESSAGE, 400);
+    }
+    if (stored.expiresAt.getTime() < Date.now()) {
+      throw new AppError(INVALID_RESET_LINK_MESSAGE, 400);
+    }
 
-  const user = await userRepository.findUserById(stored.userId);
-  if (!user || !user.isActive) {
-    throw new AppError(INVALID_RESET_LINK_MESSAGE, 400);
-  }
+    const owner = await userRepository.findUserByIdForUpdate(query, stored.userId);
+    if (!owner) {
+      throw new AppError(INVALID_RESET_LINK_MESSAGE, 400);
+    }
+    if (!owner.isActive) {
+      throw new AppError(DISABLED_ACCOUNT_RESET_MESSAGE, 403, {
+        email: DISABLED_ACCOUNT_RESET_MESSAGE,
+      });
+    }
 
-  const passwordHash = await hashPassword(password);
-
-  await db.withTransaction(async (query) => {
-    await userRepository.updatePasswordHash(user.id, passwordHash, user.id, query);
-    await passwordResetRepository.markPasswordResetTokenUsed(stored.id, user.id, query);
-    await refreshTokenRepository.revokeRefreshTokensForUser(user.id, user.id, query);
+    const passwordHash = await hashPassword(password);
+    await userRepository.updatePasswordHash(owner.id, passwordHash, owner.id, query);
+    const consumed = await passwordResetRepository.markPasswordResetTokenUsed(
+      stored.id,
+      owner.id,
+      query,
+    );
+    if (!consumed) {
+      throw new AppError(INVALID_RESET_LINK_MESSAGE, 400);
+    }
+    await refreshTokenRepository.revokeRefreshTokensForUser(owner.id, owner.id, query);
+    return owner;
   });
 
   return toPublicUser(user);

@@ -76,6 +76,24 @@ export async function findUserById(id: string): Promise<User | null> {
 }
 
 /**
+ * Locks a non-deleted user row for the duration of a DB transaction.
+ *
+ * @param query - Query bound to the open transaction
+ * @param id - User id
+ * @returns The locked user or null
+ */
+export async function findUserByIdForUpdate(query: SqlQuery, id: string): Promise<User | null> {
+  const result = await query<UserRow>(
+    `SELECT ${USER_COLUMNS} FROM users
+     WHERE id = $1 AND deleted_at IS NULL
+     LIMIT 1
+     FOR UPDATE`,
+    [id],
+  );
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
+
+/**
  * Lists all non-deleted users, newest first.
  *
  * @returns Domain user records

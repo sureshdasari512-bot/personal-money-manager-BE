@@ -1,5 +1,5 @@
 import { Queue } from 'bullmq';
-import { EMAIL_JOB } from '../config/jobs.js';
+import { EMAIL_JOB, type EmailJobName } from '../config/jobs.js';
 import { createRedisConnection } from '../config/redis.js';
 import { AppError } from '../types/index.js';
 import { logger } from '../utils/logger.js';
@@ -39,16 +39,21 @@ function getEmailQueue(): Queue<EmailJobData> {
  * Enqueues one transactional email for the worker to send via EmailChannel.
  *
  * @param data - Recipient and message
- * @param jobId - Optional idempotency key (duplicate ids are ignored)
+ * @param jobName - Catalog name so Upstash/Bull shows invitation, password-reset, etc.
+ * @param jobId - Optional idempotency key (duplicate ids are ignored; colons stripped)
  * @throws {AppError} If Redis is unavailable
  */
-export async function enqueueEmail(data: EmailJobData, jobId?: string): Promise<void> {
+export async function enqueueEmail(
+  data: EmailJobData,
+  jobName: EmailJobName,
+  jobId?: string,
+): Promise<void> {
   try {
     const options = jobId ? { jobId: jobId.replaceAll(':', '-') } : {};
-    await getEmailQueue().add(EMAIL_JOB.name, data, options);
-    logger.info({ to: data.to, jobId }, 'Email enqueued');
+    await getEmailQueue().add(jobName, data, options);
+    logger.info({ to: data.to, jobName, jobId }, 'Email enqueued');
   } catch (err) {
-    logger.error({ err, to: data.to, jobId }, 'Failed to enqueue email');
+    logger.error({ err, to: data.to, jobName, jobId }, 'Failed to enqueue email');
     throw new AppError('Email queue is unavailable', 503);
   }
 }

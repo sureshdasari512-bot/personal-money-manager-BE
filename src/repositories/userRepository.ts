@@ -1,5 +1,5 @@
 import { db } from '../config/database.js';
-import type { User, UserRole } from '../types/index.js';
+import type { User, UserRole, SqlQuery } from '../types/index.js';
 
 interface UserRow {
   id: string;
@@ -183,6 +183,33 @@ export async function softDeleteUser(userId: string, deletedBy: string): Promise
      WHERE id = $1 AND deleted_at IS NULL
      RETURNING ${USER_COLUMNS}`,
     [userId, deletedBy],
+  );
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
+
+/**
+ * Replaces the stored password hash after a successful reset.
+ *
+ * @param userId - Target user
+ * @param passwordHash - New bcrypt hash
+ * @param updatedBy - Acting user id
+ * @param query - Optional transaction query
+ * @returns The updated user or null
+ */
+export async function updatePasswordHash(
+  userId: string,
+  passwordHash: string,
+  updatedBy: string,
+  query: SqlQuery = db.query,
+): Promise<User | null> {
+  const result = await query<UserRow>(
+    `UPDATE users
+     SET password_hash = $2,
+         updated_at = NOW(),
+         updated_by = $3
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING ${USER_COLUMNS}`,
+    [userId, passwordHash, updatedBy],
   );
   return result.rows[0] ? mapUser(result.rows[0]) : null;
 }

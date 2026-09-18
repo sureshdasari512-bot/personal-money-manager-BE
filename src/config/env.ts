@@ -39,3 +39,4 @@ export const env = {
 export const ACCESS_TOKEN_MAX_AGE_MS = 15 * 60 * 1000;
 export const REFRESH_TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const MAX_INVITE_EXPIRY_HOURS = 48;
+export const PASSWORD_RESET_EXPIRY_HOURS = 1;

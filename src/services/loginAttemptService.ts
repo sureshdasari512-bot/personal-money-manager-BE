@@ -1,3 +1,4 @@
+import { loginAttemptsKey } from '../config/jobs.js';
 import { getRedisCommands } from '../config/redis.js';
 import { AppError } from '../types/index.js';
 import { logger } from '../utils/logger.js';
@@ -16,7 +17,7 @@ const WINDOW_SECONDS = LOGIN_ATTEMPT_WINDOW_MINUTES * 60;
  * @returns Redis key
  */
 function attemptKey(email: string): string {
-  return `login-attempts:${email.trim().toLowerCase()}`;
+  return loginAttemptsKey(email);
 }
 
 /**

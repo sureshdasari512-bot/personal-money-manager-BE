@@ -33,11 +33,11 @@ export function startEmailWorker(): Worker<EmailJobData> {
   });
 
   worker.on('completed', (job) => {
-    logger.info({ jobId: job.id, to: job.data.to }, 'Email job completed');
+    logger.info({ jobId: job.id, jobName: job.name, to: job.data.to }, 'Email job completed');
   });
 
   worker.on('failed', (job, err) => {
-    logger.error({ err, jobId: job?.id, to: job?.data.to }, 'Email job failed');
+    logger.error({ err, jobId: job?.id, jobName: job?.name, to: job?.data.to }, 'Email job failed');
   });
 
   return worker;

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { env, MAX_INVITE_EXPIRY_HOURS } from '../config/env.js';
+import { EMAIL_JOB } from '../config/jobs.js';
 import { enqueueEmail } from '../queues/emailQueue.js';
 import * as invitationRepository from '../repositories/invitationRepository.js';
 import * as userRepository from '../repositories/userRepository.js';
@@ -102,6 +103,7 @@ export async function createInvitation(
       html: content.html,
       text: content.text,
     },
+    EMAIL_JOB.names.invitation,
     `invite-${invitation.id}`,
   );
 
@@ -186,6 +188,7 @@ async function enqueueAccountReadyEmail(userId: string, email: string): Promise<
         html: content.html,
         text: content.text,
       },
+      EMAIL_JOB.names.accountReady,
       `account-ready-${userId}`,
     );
   } catch (err) {

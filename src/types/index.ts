@@ -238,6 +238,19 @@ export interface RefreshToken {
   updatedBy: string | null;
 }
 
+export interface PasswordResetToken {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+  revokedAt: Date | null;
+  revokedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
 export interface QueryResult<T> {
   rows: T[];
 }

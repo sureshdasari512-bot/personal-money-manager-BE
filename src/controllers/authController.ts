@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { requireUser } from '../middlewares/requireUser.js';
 import * as authService from '../services/authService.js';
 import * as invitationService from '../services/invitationService.js';
+import * as passwordResetService from '../services/passwordResetService.js';
 
 /**
  * POST /auth/login
@@ -75,6 +76,43 @@ export async function acceptInviteHandler(
     const user = await invitationService.acceptInvitation(token, password);
     await authService.startSession(res, { id: user.id, role: user.role }, user.id);
     res.status(201).json({ user });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /auth/forgot-password
+ * Queues a reset email when the account exists. Always returns the same message.
+ */
+export async function forgotPasswordHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { email } = req.body as { email: string };
+    const result = await passwordResetService.requestPasswordReset(email);
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /auth/reset-password
+ * Sets a new password from a valid email link and starts a session.
+ */
+export async function resetPasswordHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { token, password } = req.body as { token: string; password: string };
+    const user = await passwordResetService.resetPassword(token, password);
+    await authService.startSession(res, { id: user.id, role: user.role }, user.id);
+    res.status(200).json({ user });
   } catch (err) {
     next(err);
   }

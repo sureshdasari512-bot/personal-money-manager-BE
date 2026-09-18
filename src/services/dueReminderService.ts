@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import { EMAIL_JOB } from '../config/jobs.js';
 import { enqueueEmail } from '../queues/emailQueue.js';
 import * as dueReminderRepository from '../repositories/dueReminderRepository.js';
 import * as notificationLogRepository from '../repositories/notificationLogRepository.js';
@@ -64,6 +65,7 @@ export async function processDueReminders(todayIso: string = todayIsoInTimeZone(
             html: content.html,
             text: content.text,
           },
+          EMAIL_JOB.names.dueReminder,
           jobId,
         );
         await notificationLogRepository.markNotificationsSent(userId, claimed, spec.window, dueDateIso);

@@ -1,5 +1,5 @@
 import { db } from '../config/database.js';
-import type { RefreshToken } from '../types/index.js';
+import type { RefreshToken, SqlQuery } from '../types/index.js';
 
 interface RefreshTokenRow {
   id: string;
@@ -100,9 +100,14 @@ export async function revokeRefreshToken(id: string, revokedBy: string): Promise
  *
  * @param userId - Target user
  * @param revokedBy - Acting user or admin
+ * @param query - Optional transaction query
  */
-export async function revokeRefreshTokensForUser(userId: string, revokedBy: string): Promise<void> {
-  await db.query(
+export async function revokeRefreshTokensForUser(
+  userId: string,
+  revokedBy: string,
+  query: SqlQuery = db.query,
+): Promise<void> {
+  await query(
     `UPDATE refresh_tokens
      SET revoked_at = NOW(),
          revoked_by = $2,

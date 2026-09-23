@@ -28,9 +28,9 @@ export async function listPeople(
   q?: string,
 ): Promise<PeoplePage> {
   const params: PeopleCursorParams = {
-    cursor,
     limit: Math.min(limit ?? DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT),
-    q,
+    ...(cursor !== undefined && { cursor }),
+    ...(q !== undefined && { q }),
   };
   return personRepository.findPeopleByUser(userId, params);
 }

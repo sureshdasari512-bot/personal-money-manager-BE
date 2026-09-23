@@ -38,6 +38,7 @@ const OUTSTANDING_CTE = `
         0
       ) AS outstanding_cents
     FROM transactions t
+    INNER JOIN people p ON p.id = t.person_id AND p.user_id = $1 AND p.deleted_at IS NULL
     LEFT JOIN repayments r ON r.transaction_id = t.id
     WHERE t.user_id = $1 AND t.deleted_at IS NULL
     GROUP BY t.id

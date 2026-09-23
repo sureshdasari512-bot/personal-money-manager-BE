@@ -107,6 +107,22 @@ export interface UpsertPersonInput {
   notes?: string;
 }
 
+export interface PeopleCursorParams {
+  /** Opaque base64 cursor encoding (created_at, id) of the last seen row */
+  cursor?: string;
+  /** Maximum records to return (default 20, max 100) */
+  limit: number;
+  /** Optional free-text filter — matched case-insensitively against name, phone, and email */
+  q?: string;
+}
+
+export interface PeoplePage {
+  people: Person[];
+  /** Cursor to pass as ?cursor= on the next request. Absent when no more rows exist. */
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
 export interface Transaction {
   id: string;
   userId: string;

@@ -1,14 +1,38 @@
 import * as personRepository from '../repositories/personRepository.js';
-import { AppError, type Person, type UpsertPersonInput } from '../types/index.js';
+import {
+  AppError,
+  type PeopleCursorParams,
+  type PeoplePage,
+  type Person,
+  type UpsertPersonInput,
+} from '../types/index.js';
+
+const DEFAULT_PAGE_LIMIT = 20;
+const MAX_PAGE_LIMIT = 100;
 
 /**
- * Lists contacts owned by the authenticated user.
+ * Lists contacts owned by the authenticated user with cursor-based pagination.
+ * When `q` is supplied the result is filtered by name/phone/email and pagination
+ * is disabled — the full match set is returned up to the page limit.
  *
  * @param userId - Authenticated user
- * @returns The user's people
+ * @param cursor - Opaque cursor from a previous response (absent for first page)
+ * @param limit - Records per page (default 20, max 100)
+ * @param q - Optional free-text search term
+ * @returns One page of people plus next-cursor metadata
  */
-export async function listPeople(userId: string): Promise<Person[]> {
-  return personRepository.findPeopleByUser(userId);
+export async function listPeople(
+  userId: string,
+  cursor?: string,
+  limit?: number,
+  q?: string,
+): Promise<PeoplePage> {
+  const params: PeopleCursorParams = {
+    cursor,
+    limit: Math.min(limit ?? DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT),
+    q,
+  };
+  return personRepository.findPeopleByUser(userId, params);
 }
 
 /**

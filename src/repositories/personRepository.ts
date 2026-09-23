@@ -1,5 +1,5 @@
 import { db } from '../config/database.js';
-import type { Person, UpsertPersonInput } from '../types/index.js';
+import type { Person, PeopleCursorParams, PeoplePage, UpsertPersonInput } from '../types/index.js';
 
 interface PersonRow {
   id: string;
@@ -45,19 +45,107 @@ function mapPerson(row: PersonRow): Person {
 }
 
 /**
- * Lists active contacts belonging to the authenticated user, newest first.
+ * Decodes a base64 cursor into its (created_at, id) components.
+ *
+ * @param cursor - Opaque base64 string from the previous page response
+ * @returns Parsed cursor fields, or null if the cursor is absent/malformed
+ */
+function decodeCursor(cursor: string): { createdAt: string; id: string } | null {
+  try {
+    const json = Buffer.from(cursor, 'base64').toString('utf8');
+    const parsed: unknown = JSON.parse(json);
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      'createdAt' in parsed &&
+      'id' in parsed &&
+      typeof (parsed as Record<string, unknown>).createdAt === 'string' &&
+      typeof (parsed as Record<string, unknown>).id === 'string'
+    ) {
+      return parsed as { createdAt: string; id: string };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Encodes (created_at, id) into an opaque base64 cursor for the client.
+ *
+ * @param createdAt - ISO timestamp of the row
+ * @param id - UUID of the row
+ * @returns Base64 cursor string
+ */
+function encodeCursor(createdAt: Date, id: string): string {
+  return Buffer.from(JSON.stringify({ createdAt: createdAt.toISOString(), id })).toString('base64');
+}
+
+/**
+ * Lists active contacts for a user using keyset (cursor) pagination, newest first.
+ * Sort order is (created_at DESC, id DESC) — stable even when timestamps collide.
+ * When `q` is supplied the search term is matched case-insensitively against
+ * name, phone, and email using ILIKE; cursor pagination is disabled for search
+ * results because the result set is small enough to return in full.
  *
  * @param userId - Owner id
- * @returns The user's non-deleted contacts
+ * @param params - Cursor, limit, and optional search query for the page
+ * @returns One page of people plus a next-page cursor
  */
-export async function findPeopleByUser(userId: string): Promise<Person[]> {
-  const result = await db.query<PersonRow>(
-    `SELECT ${PERSON_COLUMNS} FROM people
-     WHERE user_id = $1 AND deleted_at IS NULL
-     ORDER BY created_at DESC`,
-    [userId],
-  );
-  return result.rows.map(mapPerson);
+export async function findPeopleByUser(
+  userId: string,
+  params: PeopleCursorParams,
+): Promise<PeoplePage> {
+  const { cursor, limit, q } = params;
+
+  // Search bypasses cursor pagination — return all matches up to limit
+  if (q && q.trim().length > 0) {
+    const pattern = `%${q.trim()}%`;
+    const result = await db.query<PersonRow>(
+      `SELECT ${PERSON_COLUMNS} FROM people
+       WHERE user_id = $1
+         AND deleted_at IS NULL
+         AND (name ILIKE $2 OR phone ILIKE $2 OR email ILIKE $2)
+       ORDER BY name ASC
+       LIMIT $3`,
+      [userId, pattern, limit],
+    );
+    return { people: result.rows.map(mapPerson), nextCursor: null, hasMore: false };
+  }
+
+  // Normal cursor pagination (no search)
+  const fetchLimit = limit + 1;
+  const decoded = cursor ? decodeCursor(cursor) : null;
+
+  let result: { rows: PersonRow[] };
+
+  if (decoded) {
+    result = await db.query<PersonRow>(
+      `SELECT ${PERSON_COLUMNS} FROM people
+       WHERE user_id = $1
+         AND deleted_at IS NULL
+         AND (created_at, id) < ($2, $3)
+       ORDER BY created_at DESC, id DESC
+       LIMIT $4`,
+      [userId, decoded.createdAt, decoded.id, fetchLimit],
+    );
+  } else {
+    result = await db.query<PersonRow>(
+      `SELECT ${PERSON_COLUMNS} FROM people
+       WHERE user_id = $1 AND deleted_at IS NULL
+       ORDER BY created_at DESC, id DESC
+       LIMIT $2`,
+      [userId, fetchLimit],
+    );
+  }
+
+  const hasMore = result.rows.length > limit;
+  const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
+  const lastRow = rows[rows.length - 1];
+  const nextCursor =
+    hasMore && lastRow ? encodeCursor(lastRow.created_at, lastRow.id) : null;
+
+  return { people: rows.map(mapPerson), nextCursor, hasMore };
 }
 
 /**

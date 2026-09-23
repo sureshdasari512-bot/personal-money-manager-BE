@@ -5,14 +5,18 @@ import * as transactionController from '../controllers/transactionController.js'
 import { authenticate } from '../middlewares/authenticate.js';
 import { requireRole } from '../middlewares/requireRole.js';
 import { validate } from '../middlewares/validate.js';
-import { personIdParamsSchema, upsertPersonSchema } from '../validators/personValidators.js';
+import {
+  listPeopleQuerySchema,
+  personIdParamsSchema,
+  upsertPersonSchema,
+} from '../validators/personValidators.js';
 import { createRepaymentSchema } from '../validators/repaymentValidators.js';
 
 export const personRouter = Router();
 
 personRouter.use(authenticate, requireRole('user'));
 
-personRouter.get('/', personController.listPeopleHandler);
+personRouter.get('/', validate(listPeopleQuerySchema, 'query'), personController.listPeopleHandler);
 personRouter.post('/', validate(upsertPersonSchema), personController.createPersonHandler);
 personRouter.get(
   '/:personId',

@@ -5,7 +5,8 @@ import type { UpsertPersonInput } from '../types/index.js';
 
 /**
  * GET /people
- * Lists contacts for the authenticated user.
+ * Lists contacts for the authenticated user with cursor-based pagination.
+ * Query params: cursor (opaque string), limit (1–100, default 20)
  */
 export async function listPeopleHandler(
   req: Request,
@@ -14,8 +15,14 @@ export async function listPeopleHandler(
 ): Promise<void> {
   try {
     const { userId } = requireUser(req);
-    const people = await personService.listPeople(userId);
-    res.status(200).json({ people });
+    const { cursor, limit, q } = req.query as { cursor?: string; limit?: string; q?: string };
+    const page = await personService.listPeople(
+      userId,
+      cursor,
+      limit !== undefined ? parseInt(limit, 10) : undefined,
+      q,
+    );
+    res.status(200).json(page);
   } catch (err) {
     next(err);
   }

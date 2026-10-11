@@ -172,6 +172,25 @@ export interface CreateRepaymentInput {
   allocationId?: string;
 }
 
+/**
+ * Breakdown shown to the user before they confirm a repayment.
+ * Interest is always cleared first; any remainder reduces principal.
+ */
+export interface RepaymentPreview {
+  amountCents: number;
+  accruedInterestCents: number;
+  /** Portion of the payment that goes toward clearing interest (≤ accruedInterestCents) */
+  towardInterestCents: number;
+  /** Portion of the payment that goes toward reducing principal */
+  towardPrincipalCents: number;
+  outstandingPrincipalBefore: number;
+  outstandingPrincipalAfter: number;
+  /** Interest still unpaid after this payment */
+  remainingInterestCents: number;
+  /** True when both principal and remaining interest hit zero */
+  willFullySettle: boolean;
+}
+
 export interface RepaymentAllocation {
   id: string;
   userId: string;
@@ -200,8 +219,89 @@ export interface PersonRepaymentResult {
   repayments: Repayment[];
 }
 
+export type InterestPeriod = 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
+
+export interface TransactionInterestConfig {
+  id: string;
+  transactionId: string;
+  userId: string;
+  interestRateBps: number;
+  interestPeriod: InterestPeriod;
+  deletedAt: Date | null;
+  deletedBy: string | null;
+  createdAt: Date;
+  createdBy: string | null;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface UpsertInterestConfigInput {
+  interestRateBps: number;
+  interestPeriod: InterestPeriod;
+}
+
+/**
+ * One rate segment in the interest rate history log.
+ * effective_from is inclusive, effective_to is exclusive (null = still active).
+ */
+export interface InterestRateHistory {
+  id: string;
+  transactionId: string;
+  userId: string;
+  interestRateBps: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  createdAt: Date;
+  createdBy: string | null;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+/**
+ * One accrual segment where both the rate and the outstanding principal
+ * were constant.  A new segment is created whenever the rate changes or
+ * a repayment is made.
+ * period_start_date is inclusive; period_end_date is exclusive (null = open).
+ * daily_interest_cents = floor(opening_balance_cents × rate_bps / 10000 / 30)
+ * accrued_interest_cents = daily_interest_cents × days_count
+ */
+export interface InterestAccrual {
+  id: string;
+  transactionId: string;
+  userId: string;
+  periodStartDate: string;
+  periodEndDate: string | null;
+  openingBalanceCents: number;
+  interestRateBps: number;
+  daysCount: number;
+  dailyInterestCents: number;
+  accruedInterestCents: number;
+  createdAt: Date;
+  createdBy: string | null;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+/** Data needed to notify a user that interest has been posted for a period. */
+export interface InterestReminderItem {
+  transactionId: string;
+  userId: string;
+  userEmail: string;
+  personId: string;
+  personName: string;
+  type: TransactionType;
+  amountCents: number;
+  outstandingCents: number;
+  accruedInterestCents: number;
+  interestRateBps: number;
+  interestPeriod: InterestPeriod;
+  periodEndDate: string;
+}
+
 export interface LedgerTransaction extends Transaction {
   outstandingCents: number;
+  accruedInterestCents: number;
+  interestConfig: TransactionInterestConfig | null;
   repayments: Repayment[];
 }
 

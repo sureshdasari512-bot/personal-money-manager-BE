@@ -3,6 +3,7 @@ import { closeDatabase, connectDatabase } from './config/database.js';
 import { env } from './config/env.js';
 import { closeRedisConnections, connectRedis } from './config/redis.js';
 import { closeDueReminderJobs, scheduleDueReminderScan, startDueReminderWorker } from './queues/dueReminderQueue.js';
+import { closeInterestReminderJobs, scheduleInterestReminderScan, startInterestReminderWorker } from './queues/interestReminderQueue.js';
 import { closeEmailQueue } from './queues/emailQueue.js';
 import { verifySmtpConnection } from './services/smtpEmailChannel.js';
 import { logger } from './utils/logger.js';
@@ -32,8 +33,10 @@ async function start(): Promise<void> {
     startEmailWorker();
     startDueReminderWorker();
     await scheduleDueReminderScan();
+    startInterestReminderWorker();
+    await scheduleInterestReminderScan();
   } catch (err) {
-    logger.error({ err }, 'Redis unavailable; email queue and due reminders disabled');
+    logger.error({ err }, 'Redis unavailable; email queue, due reminders and interest reminders disabled');
   }
 
   void verifySmtpConnection();
@@ -48,6 +51,7 @@ async function start(): Promise<void> {
     server.close(async () => {
       await closeEmailWorker();
       await closeDueReminderJobs();
+      await closeInterestReminderJobs();
       await closeEmailQueue();
       await closeRedisConnections();
       await closeDatabase();

@@ -10,6 +10,7 @@ export const EMAIL_JOB = {
     accountReady: 'account-ready',
     dueReminder: 'due-reminder',
     passwordReset: 'password-reset',
+    interestReminder: 'interest-reminder',
   },
 } as const;
 
@@ -20,6 +21,18 @@ export const DUE_REMINDER_JOB = {
   schedulerId: 'due-reminder-daily',
   name: 'scan',
   pattern: '0 8 * * *',
+  tz: 'Asia/Kolkata',
+} as const;
+
+/**
+ * Runs daily at 08:30 IST (after due-reminder scan).
+ * Finds transactions whose interest period ends today and sends digest emails.
+ */
+export const INTEREST_REMINDER_JOB = {
+  queueName: 'interest-reminders',
+  schedulerId: 'interest-reminder-daily',
+  name: 'scan',
+  pattern: '30 8 * * *',
   tz: 'Asia/Kolkata',
 } as const;
 

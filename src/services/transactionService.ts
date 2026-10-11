@@ -1,4 +1,6 @@
 import { db } from '../config/database.js';
+import * as interestAccrualRepository from '../repositories/interestAccrualRepository.js';
+import * as interestConfigRepository from '../repositories/interestConfigRepository.js';
 import * as personRepository from '../repositories/personRepository.js';
 import * as repaymentRepository from '../repositories/repaymentRepository.js';
 import * as transactionRepository from '../repositories/transactionRepository.js';
@@ -26,9 +28,12 @@ export async function getPersonLedger(userId: string, personId: string): Promise
 
   const transactions = await transactionRepository.findTransactionsByPerson(userId, personId);
   const ids = transactions.map((transaction) => transaction.id);
-  const [outstandingById, repayments] = await Promise.all([
+
+  const [outstandingById, repayments, interestConfigsById, accruedInterestById] = await Promise.all([
     transactionRepository.findOutstandingCentsByIds(userId, ids),
     repaymentRepository.findRepaymentsByTransactionIds(ids),
+    interestConfigRepository.findByTransactionIds(ids),
+    interestAccrualRepository.sumAccruedInterestCentsByIds(ids),
   ]);
 
   const repaymentsByTransaction = new Map<string, typeof repayments>();
@@ -42,6 +47,8 @@ export async function getPersonLedger(userId: string, personId: string): Promise
     transactions: transactions.map((transaction) => ({
       ...transaction,
       outstandingCents: outstandingById[transaction.id] ?? transaction.amountCents,
+      accruedInterestCents: accruedInterestById[transaction.id] ?? 0,
+      interestConfig: interestConfigsById[transaction.id] ?? null,
       repayments: repaymentsByTransaction.get(transaction.id) ?? [],
     })),
     netBalanceCents: calculateNetBalance(transactions, outstandingById),

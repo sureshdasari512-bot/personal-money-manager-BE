@@ -1,9 +1,14 @@
 import { Router } from 'express';
+import * as interestConfigController from '../controllers/interestConfigController.js';
 import * as repaymentController from '../controllers/repaymentController.js';
 import * as transactionController from '../controllers/transactionController.js';
 import { authenticate } from '../middlewares/authenticate.js';
 import { requireRole } from '../middlewares/requireRole.js';
 import { validate } from '../middlewares/validate.js';
+import {
+  transactionIdParamsSchema as interestTransactionParamsSchema,
+  upsertInterestConfigSchema,
+} from '../validators/interestConfigValidators.js';
 import {
   createRepaymentSchema,
   repaymentParamsSchema,
@@ -42,6 +47,11 @@ transactionRouter.delete(
   transactionController.deleteTransactionHandler,
 );
 transactionRouter.get(
+  '/:transactionId/repayments/preview',
+  validate(repaymentTransactionParamsSchema, 'params'),
+  repaymentController.previewRepaymentHandler,
+);
+transactionRouter.get(
   '/:transactionId/repayments',
   validate(repaymentTransactionParamsSchema, 'params'),
   repaymentController.listRepaymentsHandler,
@@ -56,4 +66,22 @@ transactionRouter.delete(
   '/:transactionId/repayments/:repaymentId',
   validate(repaymentParamsSchema, 'params'),
   repaymentController.deleteRepaymentHandler,
+);
+
+// Interest config routes — PUT upserts, DELETE removes, POST /accrue triggers computation
+transactionRouter.put(
+  '/:transactionId/interest-config',
+  validate(interestTransactionParamsSchema, 'params'),
+  validate(upsertInterestConfigSchema),
+  interestConfigController.upsertInterestConfigHandler,
+);
+transactionRouter.delete(
+  '/:transactionId/interest-config',
+  validate(interestTransactionParamsSchema, 'params'),
+  interestConfigController.deleteInterestConfigHandler,
+);
+transactionRouter.post(
+  '/:transactionId/interest-config/accrue',
+  validate(interestTransactionParamsSchema, 'params'),
+  interestConfigController.accrueInterestHandler,
 );

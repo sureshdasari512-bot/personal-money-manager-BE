@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import * as allocationRepository from '../repositories/allocationRepository.js';
+import * as interestAccrualRepository from '../repositories/interestAccrualRepository.js';
 import * as repaymentRepository from '../repositories/repaymentRepository.js';
 import * as transactionRepository from '../repositories/transactionRepository.js';
 import {
@@ -7,11 +8,40 @@ import {
   type CreateRepaymentInput,
   type PersonRepaymentResult,
   type Repayment,
+  type RepaymentPreview,
 } from '../types/index.js';
 import { allocateFifo } from '../utils/allocateFifo.js';
 import { calculateOutstandingBalance } from '../utils/balance.js';
 import { paymentStatusFromOutstanding } from '../utils/transactionStatus.js';
 import * as personService from './personService.js';
+import * as interestAccrualService from './interestAccrualService.js';
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Computes the interest-first allocation breakdown for a payment amount.
+ * Interest is cleared before any principal is reduced.
+ *
+ * @param amountCents - Payment being made
+ * @param outstandingPrincipalCents - Remaining principal before this payment
+ * @param accruedInterestCents - Total unpaid interest before this payment
+ * @returns How much goes to interest and how much to principal
+ */
+function splitInterestFirst(
+  amountCents: number,
+  _outstandingPrincipalCents: number,
+  accruedInterestCents: number,
+): { towardInterestCents: number; towardPrincipalCents: number } {
+  const towardInterestCents = Math.min(amountCents, accruedInterestCents);
+  const towardPrincipalCents = amountCents - towardInterestCents;
+  return { towardInterestCents, towardPrincipalCents };
+}
+
+// ---------------------------------------------------------------------------
+// Public service functions
+// ---------------------------------------------------------------------------
 
 /**
  * Lists active repayments for a transaction the user owns.
@@ -30,14 +60,85 @@ export async function listRepayments(userId: string, transactionId: string): Pro
 }
 
 /**
+ * Returns a preview breakdown of how a proposed repayment amount would be
+ * allocated — interest cleared first, remainder reduces principal.
+ * No writes are made; this is read-only.
+ *
+ * @param userId - Authenticated user
+ * @param transactionId - Parent transaction
+ * @param amountCents - Proposed payment amount in cents
+ * @returns Breakdown of interest vs principal allocation
+ * @throws {AppError} 404 if transaction not found, 400 if amount is invalid
+ */
+export async function previewRepayment(
+  userId: string,
+  transactionId: string,
+  amountCents: number,
+): Promise<RepaymentPreview> {
+  // Trigger accrual so the preview always reflects up-to-date interest.
+  await interestAccrualService.accrueInterestForTransaction(userId, transactionId);
+
+  const [transaction, existingRepayments, accruedInterestCents] = await Promise.all([
+    transactionRepository.findTransactionById(userId, transactionId),
+    repaymentRepository.findRepaymentsByTransaction(transactionId),
+    interestAccrualRepository.sumAccruedInterestCents(transactionId),
+  ]);
+
+  if (!transaction) {
+    throw new AppError('Transaction not found', 404);
+  }
+
+  const outstandingPrincipalBefore = calculateOutstandingBalance(
+    transaction.amountCents,
+    existingRepayments.map((r) => r.amountCents),
+  );
+
+  const totalOwed = outstandingPrincipalBefore + accruedInterestCents;
+
+  if (amountCents <= 0) {
+    throw new AppError('Please fix the highlighted fields', 400, {
+      amountCents: 'Amount must be greater than 0',
+    });
+  }
+
+  if (amountCents > totalOwed) {
+    throw new AppError('Please fix the highlighted fields', 400, {
+      amountCents: `Amount cannot exceed the total owed (principal ${outstandingPrincipalBefore} + interest ${accruedInterestCents})`,
+    });
+  }
+
+  const { towardInterestCents, towardPrincipalCents } = splitInterestFirst(
+    amountCents,
+    outstandingPrincipalBefore,
+    accruedInterestCents,
+  );
+
+  const outstandingPrincipalAfter = Math.max(outstandingPrincipalBefore - towardPrincipalCents, 0);
+  const remainingInterestCents = Math.max(accruedInterestCents - towardInterestCents, 0);
+  const willFullySettle = outstandingPrincipalAfter === 0 && remainingInterestCents === 0;
+
+  return {
+    amountCents,
+    accruedInterestCents,
+    towardInterestCents,
+    towardPrincipalCents,
+    outstandingPrincipalBefore,
+    outstandingPrincipalAfter,
+    remainingInterestCents,
+    willFullySettle,
+  };
+}
+
+/**
  * Records a partial or full repayment inside a DB transaction.
- * Locks the parent row so concurrent repayments cannot exceed outstanding.
+ * Interest is cleared first; any remainder reduces outstanding principal.
+ * Settlement status is updated only when BOTH principal and interest hit zero.
  *
  * @param userId - Authenticated user
  * @param transactionId - Parent transaction
  * @param input - Amount in cents, payment date, optional notes
  * @returns The created repayment
- * @throws {AppError} If the transaction is missing or the amount exceeds outstanding
+ * @throws {AppError} If the transaction is missing or the amount exceeds total owed
  */
 export async function addRepayment(
   userId: string,
@@ -49,6 +150,9 @@ export async function addRepayment(
     paidOn: input.paidOn,
     ...(input.notes?.trim() ? { notes: input.notes.trim() } : {}),
   };
+
+  // Accrue up-to-date interest before writing so the allocation is accurate.
+  await interestAccrualService.accrueInterestForTransaction(userId, transactionId);
 
   return db.withTransaction(async (query) => {
     const transaction = await transactionRepository.findTransactionByIdForUpdate(
@@ -67,14 +171,18 @@ export async function addRepayment(
     }
 
     const existing = await repaymentRepository.findRepaymentsByTransaction(transactionId, query);
-    const outstanding = calculateOutstandingBalance(
+    const outstandingPrincipal = calculateOutstandingBalance(
       transaction.amountCents,
-      existing.map((repayment) => repayment.amountCents),
+      existing.map((r) => r.amountCents),
     );
+    const accruedInterestCents = await interestAccrualRepository.sumAccruedInterestCents(
+      transactionId,
+    );
+    const totalOwed = outstandingPrincipal + accruedInterestCents;
 
-    if (normalized.amountCents > outstanding) {
+    if (normalized.amountCents > totalOwed) {
       throw new AppError('Please fix the highlighted fields', 400, {
-        amountCents: 'Amount is more than the remaining balance',
+        amountCents: 'Amount exceeds the total outstanding (principal + interest)',
       });
     }
 
@@ -84,13 +192,33 @@ export async function addRepayment(
       normalized,
       query,
     );
-    const outstandingAfter = outstanding - normalized.amountCents;
+
+    // Interest-first: determine how much goes to principal after clearing interest.
+    const { towardPrincipalCents } = splitInterestFirst(
+      normalized.amountCents,
+      outstandingPrincipal,
+      accruedInterestCents,
+    );
+
+    const outstandingPrincipalAfter = Math.max(outstandingPrincipal - towardPrincipalCents, 0);
+
+    // Recalculate remaining interest after this payment.
+    const remainingInterest = Math.max(
+      accruedInterestCents - (normalized.amountCents - towardPrincipalCents),
+      0,
+    );
+
+    // Settled only when BOTH principal and remaining interest are zero.
     await transactionRepository.updateTransactionStatus(
       userId,
       transactionId,
-      paymentStatusFromOutstanding(transaction.amountCents, outstandingAfter),
+      paymentStatusFromOutstanding(
+        transaction.amountCents,
+        outstandingPrincipalAfter + remainingInterest,
+      ),
       query,
     );
+
     return repayment;
   });
 }
@@ -126,16 +254,16 @@ export async function addPersonRepayment(
     );
     const outstandingById = await transactionRepository.findOutstandingCentsByIds(
       userId,
-      lends.map((transaction) => transaction.id),
+      lends.map((t) => t.id),
       query,
     );
 
     const eligible = lends
-      .filter((transaction) => transaction.transactionDate <= normalized.paidOn)
-      .map((transaction) => ({
-        id: transaction.id,
-        amountCents: transaction.amountCents,
-        outstandingCents: outstandingById[transaction.id] ?? 0,
+      .filter((t) => t.transactionDate <= normalized.paidOn)
+      .map((t) => ({
+        id: t.id,
+        amountCents: t.amountCents,
+        outstandingCents: outstandingById[t.id] ?? 0,
       }))
       .filter((target) => target.outstandingCents > 0);
 
@@ -167,7 +295,7 @@ export async function addPersonRepayment(
 
     const repayments: Repayment[] = [];
     for (const slice of slices) {
-      const parent = lends.find((transaction) => transaction.id === slice.id);
+      const parent = lends.find((t) => t.id === slice.id);
       if (!parent) {
         throw new AppError('Transaction not found', 404);
       }
@@ -222,7 +350,7 @@ export async function deleteRepayment(userId: string, repaymentId: string): Prom
     const remaining = await repaymentRepository.findRepaymentsByTransaction(transactionId, query);
     const outstanding = calculateOutstandingBalance(
       transaction.amountCents,
-      remaining.map((repayment) => repayment.amountCents),
+      remaining.map((r) => r.amountCents),
     );
     await transactionRepository.updateTransactionStatus(
       userId,

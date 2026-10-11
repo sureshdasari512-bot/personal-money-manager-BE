@@ -44,7 +44,7 @@ const INTEREST_CONSTRAINT_MESSAGES: Record<string, string> = {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/** Outstanding principal = lent amount minus all repayments paid strictly before a date. */
+/** Outstanding principal = lent amount minus principal portions of repayments paid strictly before a date. */
 function outstandingOnDate(
   amountCents: number,
   repayments: Repayment[],
@@ -52,7 +52,7 @@ function outstandingOnDate(
 ): number {
   const totalRepaid = repayments
     .filter((r) => r.paidOn < beforeDateIso)
-    .reduce((sum, r) => sum + r.amountCents, 0);
+    .reduce((sum, r) => sum + r.towardPrincipalCents, 0);
   return Math.max(amountCents - totalRepaid, 0);
 }
 

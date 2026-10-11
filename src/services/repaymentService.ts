@@ -90,7 +90,7 @@ export async function previewRepayment(
 
   const outstandingPrincipalBefore = calculateOutstandingBalance(
     transaction.amountCents,
-    existingRepayments.map((r) => r.amountCents),
+    existingRepayments.map((r) => r.towardPrincipalCents),
   );
 
   const totalOwed = outstandingPrincipalBefore + accruedInterestCents;
@@ -173,7 +173,7 @@ export async function addRepayment(
     const existing = await repaymentRepository.findRepaymentsByTransaction(transactionId, query);
     const outstandingPrincipal = calculateOutstandingBalance(
       transaction.amountCents,
-      existing.map((r) => r.amountCents),
+      existing.map((r) => r.towardPrincipalCents),
     );
     const accruedInterestCents = await interestAccrualRepository.sumAccruedInterestCents(
       transactionId,
@@ -186,18 +186,18 @@ export async function addRepayment(
       });
     }
 
-    const repayment = await repaymentRepository.createRepayment(
-      userId,
-      transactionId,
-      normalized,
-      query,
-    );
-
     // Interest-first: determine how much goes to principal after clearing interest.
     const { towardPrincipalCents } = splitInterestFirst(
       normalized.amountCents,
       outstandingPrincipal,
       accruedInterestCents,
+    );
+
+    const repayment = await repaymentRepository.createRepayment(
+      userId,
+      transactionId,
+      { ...normalized, towardPrincipalCents },
+      query,
     );
 
     const outstandingPrincipalAfter = Math.max(outstandingPrincipal - towardPrincipalCents, 0);
@@ -305,6 +305,8 @@ export async function addPersonRepayment(
         slice.id,
         {
           amountCents: slice.amountCents,
+          // FIFO person-level payments go entirely to principal (no interest context).
+          towardPrincipalCents: slice.amountCents,
           paidOn: normalized.paidOn,
           allocationId: allocation.id,
           ...(normalized.notes ? { notes: normalized.notes } : {}),
@@ -350,7 +352,7 @@ export async function deleteRepayment(userId: string, repaymentId: string): Prom
     const remaining = await repaymentRepository.findRepaymentsByTransaction(transactionId, query);
     const outstanding = calculateOutstandingBalance(
       transaction.amountCents,
-      remaining.map((r) => r.amountCents),
+      remaining.map((r) => r.towardPrincipalCents),
     );
     await transactionRepository.updateTransactionStatus(
       userId,

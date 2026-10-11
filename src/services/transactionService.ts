@@ -4,6 +4,7 @@ import * as interestConfigRepository from '../repositories/interestConfigReposit
 import * as personRepository from '../repositories/personRepository.js';
 import * as repaymentRepository from '../repositories/repaymentRepository.js';
 import * as transactionRepository from '../repositories/transactionRepository.js';
+import * as interestAccrualService from '../services/interestAccrualService.js';
 import {
   AppError,
   type PersonLedger,
@@ -14,6 +15,8 @@ import { calculateNetBalance } from '../utils/balance.js';
 
 /**
  * Retrieves the transaction history, repayments, and net outstanding balance for a person.
+ * Accrues interest for every interest-bearing transaction before returning data so the
+ * UI always shows today's exact figure without relying on a cron job.
  *
  * @param userId - Authenticated user's ID
  * @param personId - Target person's ID
@@ -29,10 +32,21 @@ export async function getPersonLedger(userId: string, personId: string): Promise
   const transactions = await transactionRepository.findTransactionsByPerson(userId, personId);
   const ids = transactions.map((transaction) => transaction.id);
 
-  const [outstandingById, repayments, interestConfigsById, accruedInterestById] = await Promise.all([
+  // Accrue interest for every interest-bearing transaction so the returned
+  // totals reflect today — not the last time a repayment or rate-change fired.
+  // accrueInterestForTransaction is idempotent: calling it multiple times on
+  // the same day is safe and produces the same result.
+  const interestConfigsById = await interestConfigRepository.findByTransactionIds(ids);
+  const interestBearingIds = ids.filter((id) => interestConfigsById[id] != null);
+  await Promise.all(
+    interestBearingIds.map((id) =>
+      interestAccrualService.accrueInterestForTransaction(userId, id),
+    ),
+  );
+
+  const [outstandingById, repayments, accruedInterestById] = await Promise.all([
     transactionRepository.findOutstandingCentsByIds(userId, ids),
     repaymentRepository.findRepaymentsByTransactionIds(ids),
-    interestConfigRepository.findByTransactionIds(ids),
     interestAccrualRepository.sumAccruedInterestCentsByIds(ids),
   ]);
 
@@ -91,6 +105,10 @@ export async function createTransaction(
  * Updates a transaction owned by the authenticated user.
  * Blocked when the transaction already has repayments (FR-2.8).
  *
+ * When the transaction date changes and an interest config exists, the rate
+ * history's effective_from is updated to the new date and all accrual segments
+ * are wiped so they rebuild correctly on the next ledger load.
+ *
  * @param userId - Authenticated user
  * @param transactionId - Transaction id
  * @param input - Updated fields
@@ -105,14 +123,49 @@ export async function updateTransaction(
   await assertPersonOwned(userId, input.personId);
   await assertNoRepayments(transactionId, 'You cannot edit a transaction that has repayments');
 
+  const existing = await transactionRepository.findTransactionById(userId, transactionId);
+  if (!existing) {
+    throw new AppError('Transaction not found', 404);
+  }
+
+  const normalized = normalizeTransactionInput(input);
+  const dateChanged = normalized.transactionDate !== existing.transactionDate;
+
   const transaction = await transactionRepository.updateTransaction(
     userId,
     transactionId,
-    normalizeTransactionInput(input),
+    normalized,
   );
   if (!transaction) {
     throw new AppError('Transaction not found', 404);
   }
+
+  // When the loan date changes, the interest timeline must be rebuilt from scratch.
+  // The first rate history segment's effective_from is pinned to the original
+  // transaction date — if the date shifts, that segment is wrong and all accrual
+  // segments computed from it are also wrong.
+  if (dateChanged) {
+    const config = await interestConfigRepository.findByTransactionId(transactionId);
+    if (config) {
+      await db.withTransaction(async (query) => {
+        // Reset effective_from on the first (and only, when no rate changes happened)
+        // rate history segment to the corrected transaction date.
+        await query(
+          `UPDATE interest_rate_history
+           SET effective_from = $3::date,
+               updated_by     = $2
+           WHERE transaction_id = $1
+             AND effective_from = $4::date`,
+          [transactionId, userId, normalized.transactionDate, existing.transactionDate],
+        );
+
+        // Wipe all accrual segments — they will be rebuilt correctly on the
+        // next call to accrueInterestForTransaction (ledger load or repayment).
+        await interestAccrualRepository.deleteAllAccruals(transactionId, query);
+      });
+    }
+  }
+
   return transaction;
 }
 

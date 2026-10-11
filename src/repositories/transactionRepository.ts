@@ -164,7 +164,7 @@ export async function findOutstandingCentsByIds(
     `SELECT
        t.id,
        GREATEST(
-         t.amount_cents - COALESCE(SUM(r.amount_cents) FILTER (WHERE r.deleted_at IS NULL), 0),
+         t.amount_cents - COALESCE(SUM(r.toward_principal_cents) FILTER (WHERE r.deleted_at IS NULL), 0),
          0
        ) AS outstanding_cents
      FROM transactions t

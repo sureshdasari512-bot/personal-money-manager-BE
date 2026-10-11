@@ -6,6 +6,7 @@ interface RepaymentRow {
   id: string;
   transaction_id: string;
   amount_cents: string | number;
+  toward_principal_cents: string | number;
   paid_on: Date | string;
   notes: string | null;
   allocation_id: string | null;
@@ -18,7 +19,7 @@ interface RepaymentRow {
 }
 
 const REPAYMENT_COLUMNS = `
-  id, transaction_id, amount_cents, paid_on, notes, allocation_id,
+  id, transaction_id, amount_cents, toward_principal_cents, paid_on, notes, allocation_id,
   deleted_at, deleted_by, created_at, created_by, updated_at, updated_by
 `;
 
@@ -33,6 +34,7 @@ function mapRepayment(row: RepaymentRow): Repayment {
     id: row.id,
     transactionId: row.transaction_id,
     amountCents: Number(row.amount_cents),
+    towardPrincipalCents: Number(row.toward_principal_cents),
     paidOn: toIsoDate(row.paid_on),
     notes: row.notes,
     allocationId: row.allocation_id,
@@ -119,12 +121,13 @@ export async function createRepayment(
 ): Promise<Repayment> {
   const result = await query<RepaymentRow>(
     `INSERT INTO repayments
-       (transaction_id, amount_cents, paid_on, notes, allocation_id, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $6)
+       (transaction_id, amount_cents, toward_principal_cents, paid_on, notes, allocation_id, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
      RETURNING ${REPAYMENT_COLUMNS}`,
     [
       transactionId,
       input.amountCents,
+      input.towardPrincipalCents,
       input.paidOn,
       input.notes ?? null,
       input.allocationId ?? null,

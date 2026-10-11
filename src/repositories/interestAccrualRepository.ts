@@ -55,9 +55,17 @@ function mapAccrual(row: InterestAccrualRow): InterestAccrual {
  */
 export async function sumAccruedInterestCents(transactionId: string): Promise<number> {
   const result = await db.query<{ total: string | number }>(
-    `SELECT COALESCE(SUM(accrued_interest_cents), 0) AS total
-     FROM interest_accruals
-     WHERE transaction_id = $1`,
+    `SELECT GREATEST(
+       COALESCE(SUM(ia.accrued_interest_cents), 0)
+       - COALESCE((
+           SELECT SUM(r.amount_cents - r.toward_principal_cents)
+           FROM repayments r
+           WHERE r.transaction_id = $1 AND r.deleted_at IS NULL
+         ), 0),
+       0
+     ) AS total
+     FROM interest_accruals ia
+     WHERE ia.transaction_id = $1`,
     [transactionId],
   );
   return Number(result.rows[0]?.total ?? 0);
@@ -76,10 +84,20 @@ export async function sumAccruedInterestCentsByIds(
     return {};
   }
   const result = await db.query<{ transaction_id: string; total: string | number }>(
-    `SELECT transaction_id, COALESCE(SUM(accrued_interest_cents), 0) AS total
-     FROM interest_accruals
-     WHERE transaction_id = ANY($1::uuid[])
-     GROUP BY transaction_id`,
+    `SELECT
+       ia.transaction_id,
+       GREATEST(
+         COALESCE(SUM(ia.accrued_interest_cents), 0)
+         - COALESCE((
+             SELECT SUM(r.amount_cents - r.toward_principal_cents)
+             FROM repayments r
+             WHERE r.transaction_id = ia.transaction_id AND r.deleted_at IS NULL
+           ), 0),
+         0
+       ) AS total
+     FROM interest_accruals ia
+     WHERE ia.transaction_id = ANY($1::uuid[])
+     GROUP BY ia.transaction_id`,
     [transactionIds],
   );
   return Object.fromEntries(

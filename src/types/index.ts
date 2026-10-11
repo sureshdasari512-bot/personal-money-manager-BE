@@ -154,6 +154,8 @@ export interface Repayment {
   id: string;
   transactionId: string;
   amountCents: number;
+  /** Portion of amountCents that reduced the outstanding principal. The rest went to interest. */
+  towardPrincipalCents: number;
   paidOn: string;
   notes: string | null;
   allocationId: string | null;
@@ -167,6 +169,7 @@ export interface Repayment {
 
 export interface CreateRepaymentInput {
   amountCents: number;
+  towardPrincipalCents: number;
   paidOn: string;
   notes?: string;
   allocationId?: string;

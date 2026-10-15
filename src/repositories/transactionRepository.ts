@@ -71,7 +71,7 @@ export async function findTransactionsByPerson(
   const result = await db.query<TransactionRow>(
     `SELECT ${TRANSACTION_COLUMNS} FROM transactions
      WHERE user_id = $1 AND person_id = $2 AND deleted_at IS NULL
-     ORDER BY transaction_date DESC, created_at DESC`,
+     ORDER BY updated_at DESC, transaction_date DESC, created_at DESC`,
     [userId, personId],
   );
   return result.rows.map(mapTransaction);

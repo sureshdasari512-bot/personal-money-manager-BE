@@ -85,3 +85,8 @@ transactionRouter.post(
   validate(interestTransactionParamsSchema, 'params'),
   interestConfigController.accrueInterestHandler,
 );
+transactionRouter.get(
+  '/:transactionId/interest-config/history',
+  validate(interestTransactionParamsSchema, 'params'),
+  interestConfigController.getInterestRateHistoryHandler,
+);

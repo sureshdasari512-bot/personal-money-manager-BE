@@ -241,6 +241,12 @@ export interface TransactionInterestConfig {
 export interface UpsertInterestConfigInput {
   interestRateBps: number;
   interestPeriod: InterestPeriod;
+  /**
+   * Optional effective date (YYYY-MM-DD) for a rate change.
+   * Must be >= the transaction date and <= today.
+   * Defaults to today when omitted.
+   */
+  effectiveDate?: string;
 }
 
 /**

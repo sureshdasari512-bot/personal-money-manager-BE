@@ -20,4 +20,21 @@ export const upsertInterestConfigSchema = z
         message: 'Interest period must be one of: monthly, quarterly, half_yearly, yearly',
       }),
     }),
+
+    /**
+     * Optional effective date for the new rate (YYYY-MM-DD).
+     * When provided, the rate change is recorded from this date instead of today.
+     * Must be >= the transaction date and <= today.
+     * Defaults to today when omitted.
+     */
+    effectiveDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'effectiveDate must be a valid date (YYYY-MM-DD)')
+      .refine((val) => {
+        // Reject strings that pass the regex but are not real calendar dates
+        // (e.g. 2026-13-99). Date.parse returns NaN for invalid dates.
+        const ms = Date.parse(val);
+        return !Number.isNaN(ms);
+      }, 'effectiveDate is not a valid calendar date')
+      .optional(),
   });

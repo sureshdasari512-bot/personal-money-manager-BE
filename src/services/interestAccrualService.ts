@@ -7,6 +7,7 @@ import * as transactionRepository from '../repositories/transactionRepository.js
 import type {
   InterestAccrual,
   InterestPeriod,
+  InterestRateHistory,
   Repayment,
   TransactionInterestConfig,
 } from '../types/index.js';
@@ -251,13 +252,17 @@ export async function accrueInterestForTransaction(
  *
  * On first configure: opens the rate history at the transaction date.
  * On rate change: closes the current history segment and opens a new one
- * from today, then closes the open accrual segment and starts a fresh one.
+ * from effectiveDate (defaults to today), then closes the open accrual
+ * segment and starts a fresh one from the same date.
  *
  * @param userId - Acting user
  * @param transactionId - Target transaction
  * @param interestRateBps - New monthly rate in basis points
  * @param interestPeriod - Notification/payment frequency
+ * @param effectiveDate - Optional YYYY-MM-DD for when the new rate takes effect;
+ *   must be >= transaction date and <= today. Defaults to today.
  * @returns The upserted interest config
+ * @throws {AppError} 400 if effectiveDate is outside the allowed range
  * @throws {AppError} 404 if the transaction does not exist
  */
 export async function upsertInterestConfig(
@@ -265,6 +270,7 @@ export async function upsertInterestConfig(
   transactionId: string,
   interestRateBps: number,
   interestPeriod: InterestPeriod,
+  effectiveDate?: string,
 ): Promise<TransactionInterestConfig> {
   const transaction = await transactionRepository.findTransactionById(userId, transactionId);
   if (!transaction) {
@@ -276,6 +282,37 @@ export async function upsertInterestConfig(
   }
 
   const todayIso = todayIsoInTimeZone();
+
+  // Resolve and validate the effective date for rate changes.
+  const changeFromIso = effectiveDate ?? todayIso;
+
+  if (changeFromIso < transaction.transactionDate) {
+    throw new AppError(
+      'Effective date cannot be before the transaction date',
+      400,
+    );
+  }
+  if (changeFromIso > todayIso) {
+    throw new AppError(
+      'Effective date cannot be in the future',
+      400,
+    );
+  }
+
+  // Validate that the effective date is not before the start of the currently
+  // active rate segment — going back further would create a gap/overlap in the
+  // rate timeline and corrupt historical accrual data.
+  const activeRateSegForValidation =
+    await interestRateHistoryRepository.findActiveSegment(transactionId);
+  if (
+    activeRateSegForValidation &&
+    changeFromIso < activeRateSegForValidation.effectiveFrom
+  ) {
+    throw new AppError(
+      `Effective date cannot be before the current rate segment start (${activeRateSegForValidation.effectiveFrom})`,
+      400,
+    );
+  }
 
   let config: TransactionInterestConfig;
 
@@ -300,12 +337,12 @@ export async function upsertInterestConfig(
       const rateChanged = activeRateSeg?.interestRateBps !== interestRateBps;
 
       if (rateChanged) {
-        // 1. Close the open accrual segment at today (exclusive).
+        // 1. Close the open accrual segment at changeFromIso (exclusive).
         const repayments = await repaymentRepository.findRepaymentsByTransaction(transactionId);
         const openSeg = await interestAccrualRepository.findOpenSegment(transactionId);
 
         if (openSeg) {
-          const days = daysBetween(openSeg.periodStartDate, todayIso);
+          const days = daysBetween(openSeg.periodStartDate, changeFromIso);
           const totalInterest = calculateSegmentInterestCents(
             openSeg.dailyInterestCents,
             days,
@@ -313,27 +350,27 @@ export async function upsertInterestConfig(
           await interestAccrualRepository.closeOpenSegment(
             userId,
             transactionId,
-            todayIso,
+            changeFromIso,
             days,
             totalInterest,
             query,
           );
         }
 
-        // 2. Rotate the rate history segment.
+        // 2. Rotate the rate history segment from changeFromIso.
         await interestRateHistoryRepository.rotateSegment(
           userId,
           transactionId,
           interestRateBps,
-          todayIso,
+          changeFromIso,
           query,
         );
 
-        // 3. Open a new accrual segment from today with the new rate.
+        // 3. Open a new accrual segment from changeFromIso with the new rate.
         const openingBalance = outstandingOnDate(
           transaction.amountCents,
           repayments,
-          todayIso,
+          changeFromIso,
         );
 
         if (openingBalance > 0) {
@@ -342,7 +379,7 @@ export async function upsertInterestConfig(
             userId,
             {
               transactionId,
-              periodStartDate: todayIso,
+              periodStartDate: changeFromIso,
               openingBalanceCents: openingBalance,
               interestRateBps,
               daysCount: 0,
@@ -381,6 +418,36 @@ export async function upsertInterestConfig(
     if (isPgError(err)) throw mapPgError(err, INTEREST_CONSTRAINT_MESSAGES);
     throw err;
   }
+}
+
+/**
+ * Returns the full interest rate + accrual history for a transaction.
+ * Used to power the rate-history ledger view on the frontend.
+ *
+ * Rate segments are returned chronologically with their matching accrual
+ * segment so the UI can show: period, rate, days, interest accrued, and
+ * interest paid for each segment.
+ *
+ * @param userId - Acting user (ownership check)
+ * @param transactionId - Target transaction
+ * @returns Rate segments and their paired accrual data, oldest first
+ * @throws {AppError} 404 if the transaction does not exist or does not belong to the user
+ */
+export async function getInterestRateHistory(
+  userId: string,
+  transactionId: string,
+): Promise<{ rateHistory: InterestRateHistory[]; accruals: InterestAccrual[] }> {
+  const transaction = await transactionRepository.findTransactionById(userId, transactionId);
+  if (!transaction) {
+    throw new AppError('Transaction not found', 404);
+  }
+
+  const [rateHistory, accruals] = await Promise.all([
+    interestRateHistoryRepository.findByTransactionId(transactionId),
+    interestAccrualRepository.findByTransactionId(transactionId),
+  ]);
+
+  return { rateHistory, accruals };
 }
 
 /**

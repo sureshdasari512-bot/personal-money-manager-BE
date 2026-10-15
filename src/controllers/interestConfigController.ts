@@ -15,13 +15,14 @@ export async function upsertInterestConfigHandler(
   try {
     const { userId } = requireUser(req);
     const { transactionId } = req.params as { transactionId: string };
-    const { interestRateBps, interestPeriod } = req.body as UpsertInterestConfigInput;
+    const { interestRateBps, interestPeriod, effectiveDate } = req.body as UpsertInterestConfigInput;
 
     const config = await interestAccrualService.upsertInterestConfig(
       userId,
       transactionId,
       interestRateBps,
       interestPeriod,
+      effectiveDate,
     );
 
     res.status(200).json({ interestConfig: config });
@@ -47,6 +48,28 @@ export async function deleteInterestConfigHandler(
     await interestAccrualService.removeInterestConfig(userId, transactionId);
 
     res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /transactions/:transactionId/interest-config/history
+ * Returns the full interest rate history and paired accrual segments for a
+ * transaction. Powers the per-loan rate history ledger on the frontend.
+ */
+export async function getInterestRateHistoryHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { userId } = requireUser(req);
+    const { transactionId } = req.params as { transactionId: string };
+
+    const history = await interestAccrualService.getInterestRateHistory(userId, transactionId);
+
+    res.status(200).json(history);
   } catch (err) {
     next(err);
   }

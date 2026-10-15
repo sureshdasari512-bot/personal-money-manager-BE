@@ -271,6 +271,10 @@ export async function upsertInterestConfig(
     throw new AppError('Transaction not found', 404);
   }
 
+  if (transaction.status === 'paid' || transaction.status === 'cancelled') {
+    throw new AppError('Interest cannot be added or changed on a settled transaction', 400);
+  }
+
   const todayIso = todayIsoInTimeZone();
 
   let config: TransactionInterestConfig;

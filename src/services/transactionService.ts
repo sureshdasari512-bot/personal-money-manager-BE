@@ -58,13 +58,18 @@ export async function getPersonLedger(userId: string, personId: string): Promise
   }
 
   return {
-    transactions: transactions.map((transaction) => ({
-      ...transaction,
-      outstandingCents: outstandingById[transaction.id] ?? transaction.amountCents,
-      accruedInterestCents: accruedInterestById[transaction.id] ?? 0,
-      interestConfig: interestConfigsById[transaction.id] ?? null,
-      repayments: repaymentsByTransaction.get(transaction.id) ?? [],
-    })),
+    transactions: transactions.map((transaction) => {
+      const isSettled = transaction.status === 'paid' || transaction.status === 'cancelled';
+      return {
+        ...transaction,
+        outstandingCents: outstandingById[transaction.id] ?? transaction.amountCents,
+        // Paid / cancelled transactions owe nothing — never surface stale accrual data
+        // that could exist due to corrupted toward_principal_cents splits.
+        accruedInterestCents: isSettled ? 0 : (accruedInterestById[transaction.id] ?? 0),
+        interestConfig: interestConfigsById[transaction.id] ?? null,
+        repayments: repaymentsByTransaction.get(transaction.id) ?? [],
+      };
+    }),
     netBalanceCents: calculateNetBalance(transactions, outstandingById),
   };
 }

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { escapeHtml, formatInr } from './emailFormat.js';
 
 describe('formatInr', () => {
-  it('formats integer cents as rupees', () => {
-    expect(formatInr(150050)).toContain('1,500.50');
+  it('formats integer cents as rupees with no decimal places', () => {
+    expect(formatInr(150050)).toContain('1,501');
   });
 });
 

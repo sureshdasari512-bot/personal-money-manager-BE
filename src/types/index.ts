@@ -310,6 +310,8 @@ export interface InterestReminderItem {
 export interface LedgerTransaction extends Transaction {
   outstandingCents: number;
   accruedInterestCents: number;
+  /** Daily interest in cents for the current open segment. 0 if no active interest config or status is not pending. */
+  dailyInterestCents: number;
   interestConfig: TransactionInterestConfig | null;
   repayments: Repayment[];
 }
@@ -354,6 +356,8 @@ export interface DashboardSummary {
   totalOwedToUserPrincipalCents: number;
   /** Total outstanding (principal + interest) that the user owes others */
   totalUserOwesCents: number;
+  /** Sum of daily interest across all active (pending) interest-bearing transactions */
+  totalDailyInterestCents: number;
   overdueCount: number;
   upcomingDueCount: number;
   people: DashboardPersonBalance[];

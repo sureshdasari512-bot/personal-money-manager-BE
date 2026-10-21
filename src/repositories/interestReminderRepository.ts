@@ -39,6 +39,18 @@ export async function findDueForPeriodEnd(
        WHERE ia.period_end_date IS NULL
          AND ia.accrued_interest_cents > 0
      ),
+     -- The interest start date is the earliest rate segment's effective_from,
+     -- NOT the transaction date. This matters when interest was added later
+     -- (e.g. loan on 9 Sept but interest agreed from 21 Oct — period fires
+     -- on 21 Nov, 21 Dec, … not 9 Nov, 9 Dec, …).
+     interest_start AS (
+       SELECT
+         transaction_id,
+         MIN(effective_from)::date AS started_on
+       FROM interest_rate_history
+       WHERE effective_to IS NULL OR effective_to IS NOT NULL
+       GROUP BY transaction_id
+     ),
      outstanding AS (
        SELECT
          t.id,
@@ -78,6 +90,7 @@ export async function findDueForPeriodEnd(
        $1::date                        AS period_end_date
      FROM outstanding o
      INNER JOIN open_accruals oa    ON oa.transaction_id = o.id
+     INNER JOIN interest_start  ist ON ist.transaction_id = o.id
      INNER JOIN users u             ON u.id = o.user_id
                                    AND u.deleted_at IS NULL
                                    AND u.is_active = true
@@ -85,20 +98,20 @@ export async function findDueForPeriodEnd(
                                    AND p.user_id = o.user_id
                                    AND p.deleted_at IS NULL
      WHERE o.outstanding_cents > 0
-       -- The period end date must match: transaction_date + N × period_months = today.
-       -- We check this by verifying the month difference is an exact multiple of
-       -- the period length (monthly=1, quarterly=3, half_yearly=6, yearly=12).
+       -- Period end = interest start date + N × period_months.
+       -- Use ist.started_on (first rate segment effective_from) so that a
+       -- transaction with a later interest start date fires on the correct day.
        AND (
-         EXTRACT(YEAR FROM AGE($1::date, o.transaction_date::date)) * 12
-         + EXTRACT(MONTH FROM AGE($1::date, o.transaction_date::date))
+         EXTRACT(YEAR  FROM AGE($1::date, ist.started_on)) * 12
+         + EXTRACT(MONTH FROM AGE($1::date, ist.started_on))
        )::int % CASE o.interest_period
                   WHEN 'monthly'     THEN 1
                   WHEN 'quarterly'   THEN 3
                   WHEN 'half_yearly' THEN 6
                   WHEN 'yearly'      THEN 12
                 END = 0
-       -- And the day-of-month must match the original transaction day.
-       AND EXTRACT(DAY FROM $1::date) = EXTRACT(DAY FROM o.transaction_date::date)
+       -- Day-of-month must match the interest start day.
+       AND EXTRACT(DAY FROM $1::date) = EXTRACT(DAY FROM ist.started_on)
      ORDER BY u.id ASC, p.name ASC`,
     [periodEndDateIso],
   );

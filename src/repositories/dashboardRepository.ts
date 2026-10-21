@@ -6,6 +6,7 @@ interface TotalsRow {
   total_owed_to_user_cents: string | number;
   total_owed_to_user_principal_cents: string | number;
   total_user_owes_cents: string | number;
+  total_daily_interest_cents: string | number;
 }
 
 interface PersonBalanceRow {
@@ -108,13 +109,20 @@ export async function getDashboardTotals(userId: string): Promise<{
   totalOwedToUserCents: number;
   totalOwedToUserPrincipalCents: number;
   totalUserOwesCents: number;
+  totalDailyInterestCents: number;
 }> {
   const result = await db.query<TotalsRow>(
     `WITH ${OUTSTANDING_CTE}
      SELECT
        COALESCE(SUM(outstanding_cents)          FILTER (WHERE type = 'lend'), 0) AS total_owed_to_user_cents,
        COALESCE(SUM(outstanding_principal_cents) FILTER (WHERE type = 'lend'), 0) AS total_owed_to_user_principal_cents,
-       COALESCE(SUM(outstanding_cents)          FILTER (WHERE type = 'borrow'), 0) AS total_user_owes_cents
+       COALESCE(SUM(outstanding_cents)          FILTER (WHERE type = 'borrow'), 0) AS total_user_owes_cents,
+       COALESCE((
+         SELECT SUM(ia.daily_interest_cents)
+         FROM interest_accruals ia
+         INNER JOIN outstanding_with_total o ON o.id = ia.transaction_id
+         WHERE ia.period_end_date IS NULL
+       ), 0) AS total_daily_interest_cents
      FROM outstanding_with_total`,
     [userId],
   );
@@ -124,6 +132,7 @@ export async function getDashboardTotals(userId: string): Promise<{
     totalOwedToUserCents: Number(row?.total_owed_to_user_cents ?? 0),
     totalOwedToUserPrincipalCents: Number(row?.total_owed_to_user_principal_cents ?? 0),
     totalUserOwesCents: Number(row?.total_user_owes_cents ?? 0),
+    totalDailyInterestCents: Number(row?.total_daily_interest_cents ?? 0),
   };
 }
 

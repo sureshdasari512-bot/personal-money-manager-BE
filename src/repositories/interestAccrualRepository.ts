@@ -265,6 +265,31 @@ export async function closeOpenSegment(
 }
 
 /**
+ * Returns the daily interest in cents from the open segment for each transaction.
+ * Only pending transactions have an open segment (period_end_date IS NULL).
+ *
+ * @param transactionIds - Transaction ids to look up
+ * @returns Map of transaction id → daily interest cents (0 if no open segment)
+ */
+export async function getDailyInterestCentsByIds(
+  transactionIds: string[],
+): Promise<Record<string, number>> {
+  if (transactionIds.length === 0) {
+    return {};
+  }
+  const result = await db.query<{ transaction_id: string; daily_interest_cents: string | number }>(
+    `SELECT transaction_id, daily_interest_cents
+     FROM interest_accruals
+     WHERE transaction_id = ANY($1::uuid[])
+       AND period_end_date IS NULL`,
+    [transactionIds],
+  );
+  return Object.fromEntries(
+    result.rows.map((row) => [row.transaction_id, Number(row.daily_interest_cents)]),
+  );
+}
+
+/**
  * Hard-deletes ALL accrual rows for a transaction.
  * Called when interest config is removed so no stale interest amounts remain.
  *

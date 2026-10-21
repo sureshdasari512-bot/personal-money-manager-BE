@@ -44,10 +44,11 @@ export async function getPersonLedger(userId: string, personId: string): Promise
     ),
   );
 
-  const [outstandingById, repayments, accruedInterestById] = await Promise.all([
+  const [outstandingById, repayments, accruedInterestById, dailyInterestById] = await Promise.all([
     transactionRepository.findOutstandingCentsByIds(userId, ids),
     repaymentRepository.findRepaymentsByTransactionIds(ids),
     interestAccrualRepository.sumAccruedInterestCentsByIds(ids),
+    interestAccrualRepository.getDailyInterestCentsByIds(ids),
   ]);
 
   const repaymentsByTransaction = new Map<string, typeof repayments>();
@@ -66,6 +67,8 @@ export async function getPersonLedger(userId: string, personId: string): Promise
         // Paid / cancelled transactions owe nothing — never surface stale accrual data
         // that could exist due to corrupted toward_principal_cents splits.
         accruedInterestCents: isSettled ? 0 : (accruedInterestById[transaction.id] ?? 0),
+        // Daily interest only makes sense for active (pending) transactions with an open segment.
+        dailyInterestCents: isSettled ? 0 : (dailyInterestById[transaction.id] ?? 0),
         interestConfig: interestConfigsById[transaction.id] ?? null,
         repayments: repaymentsByTransaction.get(transaction.id) ?? [],
       };

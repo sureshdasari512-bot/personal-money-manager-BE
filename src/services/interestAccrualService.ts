@@ -392,6 +392,11 @@ export async function upsertInterestConfig(
       }
     } else {
       // First time interest is configured on this transaction.
+      // Use effectiveDate when provided (user wants interest from a specific date,
+      // e.g. loan was given on 9 Sept but interest agreed upon on 21 Oct).
+      // Fall back to the transaction date when no date is specified.
+      const firstSegmentStart = effectiveDate ?? transaction.transactionDate;
+
       config = await interestConfigRepository.createInterestConfig(
         userId,
         transactionId,
@@ -403,7 +408,7 @@ export async function upsertInterestConfig(
         userId,
         transactionId,
         interestRateBps,
-        transaction.transactionDate,
+        firstSegmentStart,
         query,
       );
     }

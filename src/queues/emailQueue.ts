@@ -27,8 +27,8 @@ function getEmailQueue(): Queue<EmailJobData> {
       defaultJobOptions: {
         attempts: 5,
         backoff: { type: 'exponential', delay: 4000 },
-        removeOnComplete: { count: 50 },
-        removeOnFail: { count: 200 },
+        removeOnComplete: { count: 10 },
+        removeOnFail: { count: 20 },
       },
     });
   }

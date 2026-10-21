@@ -40,7 +40,7 @@ export function buildDueReminderEmail(input: DueReminderEmailInput): InvitationE
     preview,
     '',
     ...input.items.map((item) => {
-      const side = item.type === 'lend' ? 'They owe you' : 'You owe them';
+      const side = item.type === 'lend' ? 'You lent' : 'You borrowed';
       return `${item.personName} · ${side} · ${formatInr(item.outstandingCents)} · Due ${formatEmailDate(item.dueDate)}`;
     }),
     '',
@@ -51,7 +51,7 @@ export function buildDueReminderEmail(input: DueReminderEmailInput): InvitationE
 
   const rows = input.items
     .map((item) => {
-      const side = item.type === 'lend' ? 'They owe you' : 'You owe them';
+      const side = item.type === 'lend' ? 'You lent' : 'You borrowed';
       const ledgerUrl = `${origin}/people/${item.personId}`;
       const accent = item.type === 'lend' ? PRIMARY : WARNING;
       return `
@@ -92,7 +92,7 @@ export function buildDueReminderEmail(input: DueReminderEmailInput): InvitationE
                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid ${LINE};border-radius:12px;overflow:hidden;">
                           <tr style="background:${CANVAS};">
                             <th align="left" style="padding:10px 16px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:${MUTED};">Person</th>
-                            <th align="left" style="padding:10px 16px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:${MUTED};">Side</th>
+                            <th align="left" style="padding:10px 16px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:${MUTED};">Type</th>
                             <th align="right" style="padding:10px 16px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:${MUTED};">Outstanding</th>
                             <th align="right" style="padding:10px 16px;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:${MUTED};">Due</th>
                           </tr>

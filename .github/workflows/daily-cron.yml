@@ -1,17 +1,27 @@
-name: Daily Due Reminders — 8 AM IST (triggers at 7:59)
+name: Daily Reminders — Due (8 AM IST) + Interest (8:30 AM IST)
 
 on:
   schedule:
-    - cron: '29 2 * * *'   # 02:29 UTC = 07:59 IST (30s buffer before 8 AM)
+    - cron: '29 2 * * *'   # 02:29 UTC = 07:59 IST (wakes server before 8 AM)
   workflow_dispatch:         # manual trigger for testing
 
 jobs:
-  trigger-due-reminders:
+  trigger-reminders:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Render — POST /internal/due-reminders
+      - name: Ping Render — POST /internal/due-reminders (8 AM IST)
         run: |
           curl --fail -X POST \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
             https://personal-money-manager-be.onrender.com/api/internal/due-reminders
+
+      - name: Wait 30 minutes (for 8:30 AM IST interest reminders)
+        run: sleep 1800
+
+      - name: Ping Render — POST /internal/interest-reminders (8:30 AM IST)
+        run: |
+          curl --fail -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            https://personal-money-manager-be.onrender.com/api/internal/interest-reminders

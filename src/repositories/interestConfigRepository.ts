@@ -145,6 +145,26 @@ export async function updateInterestConfig(
 }
 
 /**
+ * Returns all active interest configs whose transaction is still active
+ * (status not in 'paid', 'cancelled'). Used by the nightly accrual worker
+ * to process every interest-bearing transaction across all users in one pass.
+ *
+ * @returns All active interest configs across every user, oldest first
+ */
+export async function findAllActive(): Promise<TransactionInterestConfig[]> {
+  const result = await db.query<InterestConfigRow>(
+    `SELECT tic.id, tic.transaction_id, tic.user_id, tic.interest_rate_bps, tic.interest_period,
+            tic.deleted_at, tic.deleted_by, tic.created_at, tic.created_by, tic.updated_at, tic.updated_by
+     FROM transaction_interest_configs tic
+     INNER JOIN transactions t ON t.id = tic.transaction_id
+     WHERE tic.deleted_at IS NULL
+       AND t.deleted_at IS NULL
+       AND t.status NOT IN ('paid', 'cancelled')`,
+  );
+  return result.rows.map(mapInterestConfig);
+}
+
+/**
  * Soft-deletes the interest config for a transaction.
  *
  * @param userId - Acting user

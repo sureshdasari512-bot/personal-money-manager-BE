@@ -1,0 +1,30 @@
+name: Nightly Interest Accrual — 00:01 IST
+
+on:
+  schedule:
+    - cron: '31 18 * * *'  # 18:31 UTC = 00:01 IST (IST is UTC+5:30)
+  workflow_dispatch:        # manual trigger for testing
+
+jobs:
+  trigger-accrual:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render — POST /internal/accrue-interest
+        run: |
+          HTTP_STATUS=$(curl --silent --show-error \
+            --max-time 300 \
+            --write-out "%{http_code}" \
+            --output /tmp/accrual_response.json \
+            -X POST \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            https://personal-money-manager-be.onrender.com/api/internal/accrue-interest)
+
+          echo "HTTP status: $HTTP_STATUS"
+          echo "Response body:"
+          cat /tmp/accrual_response.json
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "ERROR: Accrual endpoint returned HTTP $HTTP_STATUS"
+            exit 1
+          fi
